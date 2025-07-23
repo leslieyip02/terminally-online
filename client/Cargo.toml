@@ -6,6 +6,7 @@ edition = "2024"
 [dependencies]
 itertools = "0.14"
 futures = "0.3"
+openh264 = "0.8"
 termsize = "0.1"
 textwrap = "0.16"
 
