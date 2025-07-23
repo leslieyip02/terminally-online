@@ -5,17 +5,18 @@ use crossterm::{
     event::{Event, EventStream},
     terminal,
 };
+use futures::{FutureExt, StreamExt};
 
 use client::{
-    input::{InputHandler, InputType},
+    input::{InputType, keyboard::Keyboard, webcam::Webcam},
     ui::{FRAME_DURATION, Printable, Ui, Updatable},
 };
-use futures::{FutureExt, StreamExt};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let mut ui = Ui::new()?;
-    let mut input_handler = InputHandler::new();
+    let mut webcam = Webcam::new()?;
+    let mut keyboard = Keyboard::new();
+    let mut ui = Ui::new(&webcam)?;
 
     let mut input_stream = EventStream::new();
     let mut interval = tokio::time::interval(FRAME_DURATION);
@@ -25,10 +26,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     terminal::enable_raw_mode()?;
     loop {
         tokio::select! {
+            // TODO: refactor
             event = input_stream.next().fuse() => {
                 match event {
                     Some(Ok(Event::Key(event))) => {
-                        match input_handler.input(&event)? {
+                        match keyboard.input(&event)? {
                             InputType::Exit => break,
                             input => {
                                 ui.update(input)?;
@@ -39,7 +41,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
             },
             _ = interval.tick() => {
-                ui.update(InputType::TickUpdate)?;
+                ui.update(InputType::Webcam { webcam: &mut webcam })?;
                 ui.print(&mut out)?
             }
         }

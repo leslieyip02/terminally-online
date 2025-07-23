@@ -1,6 +1,9 @@
 use std::time::Duration;
 
-use crate::{input::InputType, ui::screen::Screen};
+use crate::{
+    input::{InputType, webcam::Webcam},
+    ui::screen::Screen,
+};
 
 mod chatbox;
 mod screen;
@@ -22,13 +25,12 @@ pub struct Ui {
 }
 
 impl Ui {
-    pub fn new() -> Result<Self, Box<dyn std::error::Error>> {
+    pub fn new(webcam: &Webcam) -> Result<Self, Box<dyn std::error::Error>> {
         let size = match termsize::get() {
             Some(size) => size,
             None => panic!("Unable to get terminal size."),
         };
-        let screen = Screen::new(size.cols as usize, size.rows as usize)?;
-
+        let screen = Screen::new(size.cols as usize, size.rows as usize, webcam)?;
         Ok(Self { screen: screen })
     }
 }

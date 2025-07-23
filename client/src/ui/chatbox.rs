@@ -2,20 +2,30 @@ use crate::{
     input::InputType,
     ui::{
         Updatable,
-        screen::{ScreenComponent, ScreenOrigin},
+        screen::{ScreenComponentView, ScreenOrigin},
         tile::Tile,
     },
 };
 
-pub struct Chatbox {
-    sent_messages: Vec<String>,
-    buffered_message: String,
+pub struct ChatboxView {
+    origin: ScreenOrigin,
     display_width: usize,
     display_height: usize,
-    origin: ScreenOrigin,
+    sent_messages: Vec<String>,
+    buffered_message: String,
 }
 
-impl Chatbox {
+impl ChatboxView {
+    pub fn new(origin: ScreenOrigin, display_width: usize, display_height: usize) -> Self {
+        Self {
+            origin: origin,
+            display_width: display_width,
+            display_height: display_height,
+            sent_messages: vec![],
+            buffered_message: String::new(),
+        }
+    }
+
     fn write_sent_messages_to_screen(&self, screen_buffer: &mut Vec<Tile>) {
         self.sent_messages.iter().fold(0, |acc, message| {
             let wrapped = textwrap::wrap(message, self.display_width);
@@ -51,17 +61,7 @@ impl Chatbox {
     }
 }
 
-impl ScreenComponent for Chatbox {
-    fn new(display_width: usize, display_height: usize, origin: ScreenOrigin) -> Self {
-        Self {
-            sent_messages: vec![],
-            buffered_message: String::new(),
-            display_width: display_width,
-            display_height: display_height,
-            origin: origin,
-        }
-    }
-
+impl ScreenComponentView for ChatboxView {
     fn write_to_screen(&self, screen_buffer: &mut Vec<Tile>) {
         self.clear_screen(screen_buffer);
         self.write_sent_messages_to_screen(screen_buffer);
@@ -69,7 +69,7 @@ impl ScreenComponent for Chatbox {
     }
 }
 
-impl Updatable for Chatbox {
+impl Updatable for ChatboxView {
     fn update(&mut self, input: InputType) -> Result<(), Box<dyn std::error::Error>> {
         match input {
             InputType::Normal { character } => self.buffered_message.push(character),

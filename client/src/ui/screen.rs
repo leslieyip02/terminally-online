@@ -6,19 +6,18 @@ use crossterm::{
 use itertools::Itertools;
 
 use crate::{
-    input::InputType,
-    ui::{Printable, Updatable, chatbox::Chatbox, tile::Tile, video::Video},
+    input::{InputType, webcam::Webcam},
+    ui::{Printable, Updatable, chatbox::ChatboxView, tile::Tile, video::VideoView},
 };
 
 pub struct Screen {
     screen_buffer: Vec<Tile>,
     screen_width: usize,
-    video: Video,
-    chatbox: Chatbox,
+    video: VideoView,
+    chatbox: ChatboxView,
 }
 
-pub trait ScreenComponent {
-    fn new(display_width: usize, display_height: usize, origin: ScreenOrigin) -> Self;
+pub trait ScreenComponentView {
     fn write_to_screen(&self, screen_buffer: &mut Vec<Tile>);
 }
 
@@ -32,27 +31,29 @@ impl Screen {
     pub fn new(
         screen_width: usize,
         screen_height: usize,
+        webcam: &Webcam,
     ) -> Result<Self, Box<dyn std::error::Error>> {
         let buffer_size = screen_width * screen_height;
 
         // TODO: replace placeholder values
-        let video = Video::new(
-            128,
-            72,
+        let video = VideoView::new(
             ScreenOrigin {
                 x: 2,
                 y: 1,
                 stride: screen_width,
             },
+            128,
+            72,
+            webcam,
         );
-        let chatbox = Chatbox::new(
-            screen_width - video.width() - 4,
-            screen_height - 2,
+        let chatbox = ChatboxView::new(
             ScreenOrigin {
                 x: video.width() + 4,
                 y: 1,
                 stride: screen_width,
             },
+            screen_width - video.width() - 4,
+            screen_height - 2,
         );
 
         Ok(Self {
@@ -67,7 +68,7 @@ impl Screen {
 impl Updatable for Screen {
     fn update(&mut self, input: InputType) -> Result<(), Box<dyn std::error::Error>> {
         match input {
-            InputType::TickUpdate => {
+            InputType::Webcam { webcam: _ } => {
                 self.video.update(input)?;
                 self.video.write_to_screen(&mut self.screen_buffer);
             }

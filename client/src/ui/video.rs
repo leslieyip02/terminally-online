@@ -1,15 +1,10 @@
 use itertools::Itertools;
-use nokhwa::{
-    Camera,
-    pixel_format::RgbFormat,
-    utils::{RequestedFormat, RequestedFormatType},
-};
 
 use crate::{
-    input::InputType,
+    input::{InputType, VideoFeed, webcam::Webcam},
     ui::{
         Updatable,
-        screen::{ScreenComponent, ScreenOrigin},
+        screen::{ScreenComponentView, ScreenOrigin},
         tile::Tile,
     },
 };
@@ -46,24 +41,48 @@ impl InterpolationWeight {
     }
 }
 
-pub struct Video {
-    camera: Camera,
-    input_buffer: Vec<u8>,
-    input_width: usize,
-    display_width: usize,
-    interpolation_weights: Vec<InterpolationWeight>,
+pub struct VideoView {
     origin: ScreenOrigin,
+    display_width: usize,
+    input_buffer: Vec<u8>,
+    input_stride: usize,
+    interpolation_weights: Vec<InterpolationWeight>,
 }
 
-impl Video {
+impl VideoView {
+    pub fn new(
+        origin: ScreenOrigin,
+        display_width: usize,
+        display_height: usize,
+        webcam: &Webcam,
+    ) -> Self {
+        let resolution = webcam.resolution();
+        let input_width = resolution.width() as usize;
+        let input_height = resolution.height() as usize;
+        let input_buffer_size = input_width * input_height * 3;
+
+        Self {
+            origin: origin,
+            display_width: display_width,
+            input_buffer: vec![0; input_buffer_size],
+            input_stride: input_width,
+            interpolation_weights: VideoView::compute_interpolation_weights(
+                input_width,
+                input_height,
+                display_width,
+                display_height,
+            ),
+        }
+    }
+
     pub fn width(&self) -> usize {
         self.display_width
     }
 
     fn at(&self, x: usize, y: usize) -> f32 {
-        let r = self.input_buffer[y * self.input_width * 3 + x * 3] as f32;
-        let g = self.input_buffer[y * self.input_width * 3 + x * 3 + 1] as f32;
-        let b = self.input_buffer[y * self.input_width * 3 + x * 3 + 2] as f32;
+        let r = self.input_buffer[y * self.input_stride * 3 + x * 3] as f32;
+        let g = self.input_buffer[y * self.input_stride * 3 + x * 3 + 1] as f32;
+        let b = self.input_buffer[y * self.input_stride * 3 + x * 3 + 2] as f32;
 
         0.2126 * r + 0.7152 * g + 0.0722 * b
     }
@@ -93,34 +112,7 @@ impl Video {
     }
 }
 
-impl ScreenComponent for Video {
-    fn new(display_width: usize, display_height: usize, origin: ScreenOrigin) -> Self {
-        // TODO: take any video feed input
-        let index = nokhwa::utils::CameraIndex::Index(0);
-        let format = RequestedFormat::new::<RgbFormat>(RequestedFormatType::None);
-        let mut camera = Camera::new(index, format).unwrap();
-        camera.open_stream().unwrap();
-
-        let input_width = camera.resolution().width() as usize;
-        let input_height = camera.resolution().height() as usize;
-        let input_buffer = vec![0; input_width * input_height * 3];
-        let interpolation_weights = Video::compute_interpolation_weights(
-            input_width,
-            input_height,
-            display_width,
-            display_height,
-        );
-
-        Self {
-            camera: camera,
-            input_buffer: input_buffer,
-            input_width: input_width,
-            display_width: display_width,
-            interpolation_weights: interpolation_weights,
-            origin: origin,
-        }
-    }
-
+impl ScreenComponentView for VideoView {
     fn write_to_screen(&self, screen_buffer: &mut Vec<Tile>) {
         self.interpolation_weights
             .iter()
@@ -143,13 +135,10 @@ impl ScreenComponent for Video {
     }
 }
 
-impl Updatable for Video {
+impl Updatable for VideoView {
     fn update(&mut self, input: InputType) -> Result<(), Box<dyn std::error::Error>> {
         match input {
-            InputType::TickUpdate => {
-                let frame = self.camera.frame()?;
-                frame.decode_image_to_buffer::<RgbFormat>(&mut self.input_buffer)?;
-            }
+            InputType::Webcam { webcam } => webcam.write_next_frame(&mut self.input_buffer)?,
             _ => {}
         }
 
