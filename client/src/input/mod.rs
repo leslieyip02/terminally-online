@@ -11,6 +11,8 @@ pub enum InputType<'a> {
     Send,
     Webcam { webcam: &'a mut Webcam },
     Exit,
+    CreateRoom,
+    JoinRoom,
     Unknown,
 }
 
