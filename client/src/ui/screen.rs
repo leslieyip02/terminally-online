@@ -7,14 +7,15 @@ use itertools::Itertools;
 
 use crate::{
     input::{InputType, webcam::Webcam},
-    ui::{Printable, Updatable, chatbox::ChatboxView, tile::Tile, video::VideoView},
+    ui::{Printable, Updatable, tile::Tile, video::VideoView},
+    // ui::{Printable, Updatable, chatbox::ChatboxView, tile::Tile, video::VideoView},
 };
 
 pub struct Screen {
     screen_buffer: Vec<Tile>,
     screen_width: usize,
     video: VideoView,
-    chatbox: ChatboxView,
+    // chatbox: ChatboxView,
 }
 
 pub trait ScreenComponentView {
@@ -46,21 +47,21 @@ impl Screen {
             72,
             webcam,
         );
-        let chatbox = ChatboxView::new(
-            ScreenOrigin {
-                x: video.width() + 4,
-                y: 1,
-                stride: screen_width,
-            },
-            screen_width - video.width() - 4,
-            screen_height - 2,
-        );
+        // let chatbox = ChatboxView::new(
+        //     ScreenOrigin {
+        //         x: video.width() + 4,
+        //         y: 1,
+        //         stride: screen_width,
+        //     },
+        //     screen_width - video.width() - 4,
+        //     screen_height - 2,
+        // );
 
         Ok(Self {
             screen_buffer: vec![Tile::default(); buffer_size as usize],
             screen_width: screen_width,
             video: video,
-            chatbox: chatbox,
+            // chatbox: chatbox,
         })
     }
 }
@@ -73,8 +74,8 @@ impl Updatable for Screen {
                 self.video.write_to_screen(&mut self.screen_buffer);
             }
             _ => {
-                self.chatbox.update(input)?;
-                self.chatbox.write_to_screen(&mut self.screen_buffer);
+                // self.chatbox.update(input)?;
+                // self.chatbox.write_to_screen(&mut self.screen_buffer);
             }
         }
 

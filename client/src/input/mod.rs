@@ -2,7 +2,6 @@ use nokhwa::utils::Resolution;
 
 use crate::input::webcam::Webcam;
 
-pub mod keyboard;
 pub mod webcam;
 
 pub enum InputType<'a> {
