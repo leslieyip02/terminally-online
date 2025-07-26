@@ -43,9 +43,9 @@ impl Chatbox {
     // TODO: consider refactoring messages to use crossterm::style::StyledContent
     pub fn receive_message(&mut self, message: &RoomMessage) {
         let formatted = match message {
-            RoomMessage::Chat { user, content } => format!("[{}]: {}", user, content),
-            RoomMessage::Join { user } => format!("> {} joined", user),
-            RoomMessage::Leave { user } => format!("> {} left", user),
+            RoomMessage::Chat { username, content } => format!("[{}]: {}", username, content),
+            RoomMessage::Join { username } => format!("> {} joined", username),
+            RoomMessage::Leave { username } => format!("> {} left", username),
         };
         self.append_to_lines_buffer(&formatted);
     }

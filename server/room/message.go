@@ -6,9 +6,9 @@ import (
 )
 
 type RoomMessage struct {
-	Type    RoomMessageType `json:"type"`
-	User    string          `json:"user"`
-	Content *string         `json:"content,omitempty"`
+	Type     RoomMessageType `json:"type"`
+	Username string          `json:"username"`
+	Content  *string         `json:"content,omitempty"`
 }
 
 type RoomMessageType string
@@ -19,27 +19,19 @@ const (
 	MessageTypeLeave RoomMessageType = "leave"
 )
 
-func newChatMessage(user string, content string) RoomMessage {
+func newJoinMessage(username string) RoomMessage {
 	return RoomMessage{
-		Type:    MessageTypeChat,
-		User:    user,
-		Content: &content,
+		Type:     MessageTypeJoin,
+		Username: username,
+		Content:  nil,
 	}
 }
 
-func newJoinMessage(user string) RoomMessage {
+func newLeaveMessage(username string) RoomMessage {
 	return RoomMessage{
-		Type:    MessageTypeJoin,
-		User:    user,
-		Content: nil,
-	}
-}
-
-func newLeaveMessage(user string) RoomMessage {
-	return RoomMessage{
-		Type:    MessageTypeLeave,
-		User:    user,
-		Content: nil,
+		Type:     MessageTypeLeave,
+		Username: username,
+		Content:  nil,
 	}
 }
 

@@ -13,6 +13,7 @@ use crate::room::{
 };
 
 pub struct RoomClient {
+    username: String,
     http_client: reqwest::Client,
     room_stream: Option<RoomStream>,
 }
@@ -21,7 +22,10 @@ impl RoomClient {
     const TIMEOUT: Duration = Duration::from_millis(3000);
 
     pub fn new() -> Self {
+        let username = whoami::username();
+
         Self {
+            username: username,
             http_client: reqwest::Client::new(),
             room_stream: None,
         }
@@ -70,7 +74,7 @@ impl RoomClient {
     }
 
     pub async fn connect_to_room(&self, token: &str) -> Result<RoomStream, Error> {
-        let response = match timeout(Self::TIMEOUT, connect_to_room(token)).await {
+        let response = match timeout(Self::TIMEOUT, connect_to_room(token, &self.username)).await {
             Ok(response) => response,
             Err(_) => return Err(Error::Timeout),
         };
@@ -88,7 +92,7 @@ impl RoomClient {
         };
 
         let message = RoomMessage::Chat {
-            user: String::from("TODO"),
+            username: self.username.clone(),
             content: String::from(content),
         };
         let json = match serde_json::to_string(&message) {

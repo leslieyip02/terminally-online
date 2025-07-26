@@ -48,8 +48,15 @@ async fn join_room(
     Ok(response)
 }
 
-async fn connect_to_room(token: &str) -> Result<RoomStream, Box<dyn std::error::Error>> {
-    let url = format!("ws://localhost:8080/ws?token={}", token).into_client_request()?;
+async fn connect_to_room(
+    token: &str,
+    username: &str,
+) -> Result<RoomStream, Box<dyn std::error::Error>> {
+    let url = format!(
+        "ws://localhost:8080/ws?token={}&username={}",
+        token, username
+    )
+    .into_client_request()?;
     let (stream, _) = connect_async(url).await?;
     Ok(stream)
 }

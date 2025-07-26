@@ -25,14 +25,14 @@ func (r *Room) run() {
 		select {
 		case client := <-r.register:
 			r.clients[client] = true
-			r.broadcastMessage(newJoinMessage("TODO"))
+			r.broadcastMessage(newJoinMessage(client.username))
 
 		case client := <-r.unregister:
 			if _, ok := r.clients[client]; ok {
 				delete(r.clients, client)
 				close(client.send)
 			}
-			r.broadcastMessage(newLeaveMessage("TODO"))
+			r.broadcastMessage(newLeaveMessage(client.username))
 
 		case data := <-r.broadcast:
 			r.log(fmt.Sprintf("received %s", string(data)))
@@ -63,7 +63,7 @@ func (r *Room) broadcastMessage(message RoomMessage) {
 		default:
 			close(client.send)
 			delete(r.clients, client)
-			r.broadcastMessage(newLeaveMessage("TODO"))
+			r.broadcastMessage(newLeaveMessage(client.username))
 		}
 	}
 }
@@ -144,6 +144,11 @@ func (m *RoomManager) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	var username = r.URL.Query().Get("username")
+	if username == "" {
+		username = "???"
+	}
+
 	room, ok := m.rooms[roomId]
 	if !ok {
 		http.Error(w, "invalid room", http.StatusNotFound)
@@ -156,7 +161,12 @@ func (m *RoomManager) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	client := &Client{conn: conn, send: make(chan []byte, 256), room: room}
+	client := &Client{
+		username: username,
+		conn:     conn,
+		send:     make(chan []byte, 256),
+		room:     room,
+	}
 	room.register <- client
 
 	go client.readPump()

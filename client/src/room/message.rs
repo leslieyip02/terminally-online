@@ -4,11 +4,11 @@ use serde::{Deserialize, Serialize};
 #[serde(tag = "type")]
 pub enum RoomMessage {
     #[serde(rename = "chat")]
-    Chat { user: String, content: String },
+    Chat { username: String, content: String },
 
     #[serde(rename = "join")]
-    Join { user: String },
+    Join { username: String },
 
     #[serde(rename = "leave")]
-    Leave { user: String },
+    Leave { username: String },
 }
