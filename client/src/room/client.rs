@@ -54,7 +54,11 @@ impl RoomClient {
 
         let token = match response {
             Ok(response) => response.token,
-            Err(_) => return Err(Error::JoinRoom { room_id: String::from(room_id) }),
+            Err(_) => {
+                return Err(Error::JoinRoom {
+                    room_id: String::from(room_id),
+                });
+            }
         };
 
         self.room_stream = match self.connect_to_room(&token).await {
@@ -123,7 +127,7 @@ impl Stream for RoomClient {
                 }
                 _ => Poll::Ready(None),
             },
-            Poll::Ready(Some(Err(_))) => Poll::Ready(None),
+            Poll::Ready(Some(Err(_))) => Poll::Ready(Some(Err(Error::ReceiveMessage))),
             Poll::Ready(None) => Poll::Ready(None),
             Poll::Pending => Poll::Pending,
         }

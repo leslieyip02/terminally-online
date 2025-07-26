@@ -5,13 +5,14 @@ use crossterm::{QueueableCommand, cursor::MoveTo, style::Print};
 use crate::{room::message::RoomMessage, ui::Drawable};
 
 pub mod command;
+pub mod error;
 
 pub struct Chatbox {
     x: u16,
     y: u16,
     width: u16,
     height: u16,
-    lines_buffer: VecDeque<String>,
+    content_buffer: VecDeque<String>,
     typing_buffer: String,
 }
 
@@ -22,7 +23,7 @@ impl Chatbox {
     const TYPING_INDICATOR: &str = ">";
 
     pub fn new(x: u16, y: u16, width: u16, height: u16) -> Self {
-        let lines_buffer = VecDeque::with_capacity(height as usize - 2);
+        let content_buffer = VecDeque::with_capacity(height as usize - 2);
         let typing_buffer = String::new();
 
         Self {
@@ -30,7 +31,7 @@ impl Chatbox {
             y: y,
             width: width,
             height: height,
-            lines_buffer: lines_buffer,
+            content_buffer: content_buffer,
             typing_buffer: typing_buffer,
         }
     }
@@ -46,23 +47,29 @@ impl Chatbox {
             RoomMessage::Join { user } => format!("> {} joined", user),
             RoomMessage::Leave { user } => format!("> {} left", user),
         };
-        textwrap::wrap(&formatted, self.line_width())
-            .iter()
-            .for_each(|line| {
-                self.lines_buffer.push_back(line.to_string());
-            });
-
-        while self.lines_buffer.len() > self.height as usize {
-            self.lines_buffer.pop_front();
-        }
+        self.append_to_lines_buffer(&formatted);
     }
 
-    // TODO: consider refactoring
-    pub fn receive_error(&mut self, error: &str) {
-        self.receive_message(&RoomMessage::Chat {
-            user: String::from("!"),
-            content: String::from(error),
-        })
+    pub fn log(&mut self, content: &str) {
+        let formatted = format!("[info] {}", content);
+        self.append_to_lines_buffer(&formatted);
+    }
+
+    pub fn error(&mut self, content: &str) {
+        let formatted = format!("[error] {}", content);
+        self.append_to_lines_buffer(&formatted);
+    }
+
+    fn append_to_lines_buffer(&mut self, text: &str) {
+        textwrap::wrap(text, self.line_width())
+            .iter()
+            .for_each(|line| {
+                self.content_buffer.push_back(line.to_string());
+            });
+
+        while self.content_buffer.len() > self.height as usize {
+            self.content_buffer.pop_front();
+        }
     }
 }
 
@@ -92,16 +99,16 @@ impl Drawable for Chatbox {
             .queue(Print(Self::DIVIDER.repeat(self.line_width())))?;
 
         let available = divider_y as usize - 2;
-        let lines_buffer_size = self.lines_buffer.len();
-        let (start_line, num_lines) = if available < lines_buffer_size {
-            (lines_buffer_size - available, available)
+        let content_buffer_size = self.content_buffer.len();
+        let (start_line, lines) = if available < content_buffer_size {
+            (content_buffer_size - available, available)
         } else {
-            (0, lines_buffer_size)
+            (0, content_buffer_size)
         };
-        for i in 0..num_lines {
+        for i in 0..lines {
             stdout
                 .queue(MoveTo(self.x + Self::PADDING + 1, self.y + i as u16 + 1))?
-                .queue(Print(&self.lines_buffer[start_line + i]))?;
+                .queue(Print(&self.content_buffer[start_line + i]))?;
         }
 
         stdout.flush()

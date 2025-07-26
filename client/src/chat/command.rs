@@ -2,7 +2,7 @@ use std::collections::VecDeque;
 
 use crossterm::event::{KeyCode, KeyEvent};
 
-use crate::chat::Chatbox;
+use crate::chat::{Chatbox, error::Error};
 
 pub enum ChatboxCommand {
     Create,
@@ -13,7 +13,6 @@ pub enum ChatboxCommand {
 pub enum ChatboxInput {
     Message(String),
     Command(ChatboxCommand),
-    Error(String),
     Exit,
     None,
 }
@@ -23,19 +22,11 @@ const CREATE_COMMAND: &str = "/create";
 const JOIN_COMMAND: &str = "/join";
 const QUIT_COMMAND: &str = "/quit";
 
-fn parse(input: &str) -> ChatboxInput {
-    if input.starts_with(COMMAND_MARKER) {
-        parse_command(input)
-    } else {
-        parse_message(input)
-    }
+fn parse_message(input: &str) -> Result<ChatboxInput, Error> {
+    Ok(ChatboxInput::Message(String::from(input)))
 }
 
-fn parse_message(input: &str) -> ChatboxInput {
-    ChatboxInput::Message(String::from(input))
-}
-
-fn parse_command(input: &str) -> ChatboxInput {
+fn parse_command(input: &str) -> Result<ChatboxInput, Error> {
     let tokens = input
         .split_whitespace()
         .map(|token| token.to_string())
@@ -43,14 +34,16 @@ fn parse_command(input: &str) -> ChatboxInput {
 
     let command = match tokens.front() {
         Some(command) => command,
-        None => return ChatboxInput::None,
+        None => return Err(Error::InvalidCommand),
     };
 
     let command = match command.as_str() {
         CREATE_COMMAND => ChatboxCommand::Create,
         JOIN_COMMAND => {
             if tokens.len() < 2 {
-                return ChatboxInput::Error(String::from("usage: /join <room_id>"));
+                return Err(Error::InvalidUsage {
+                    usage: String::from("/join <room_id>"),
+                });
             }
 
             ChatboxCommand::Join {
@@ -58,13 +51,22 @@ fn parse_command(input: &str) -> ChatboxInput {
             }
         }
         QUIT_COMMAND => ChatboxCommand::Quit,
-        _ => return ChatboxInput::Error(String::from("invalid command")),
+        _ => return Err(Error::InvalidCommand),
     };
-    ChatboxInput::Command(command)
+
+    Ok(ChatboxInput::Command(command))
 }
 
 impl Chatbox {
-    pub fn input(&mut self, key_event: &KeyEvent) -> Result<ChatboxInput, std::io::Error> {
+    fn parse(&self, input: &str) -> Result<ChatboxInput, Error> {
+        if input.starts_with(COMMAND_MARKER) {
+            parse_command(input)
+        } else {
+            parse_message(input)
+        }
+    }
+
+    pub fn input(&mut self, key_event: &KeyEvent) -> Result<ChatboxInput, Error> {
         match key_event.code {
             KeyCode::Char(c) => {
                 self.typing_buffer.push(c);
@@ -75,9 +77,9 @@ impl Chatbox {
                 return Ok(ChatboxInput::None);
             }
             KeyCode::Enter => {
-                let input = parse(&self.typing_buffer);
+                let input = self.typing_buffer.clone();
                 self.typing_buffer.clear();
-                return Ok(input);
+                self.parse(&input)
             }
             KeyCode::Esc => return Ok(ChatboxInput::Exit),
             _ => return Ok(ChatboxInput::None),

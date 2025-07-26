@@ -7,6 +7,7 @@ pub enum Error {
     Deserialization,
     Serialization,
     SendMessage,
+    ReceiveMessage,
     Timeout,
 }
 
@@ -16,10 +17,11 @@ impl std::fmt::Display for Error {
             Error::CreateRoom => write!(f, "unable to create room"),
             Error::JoinRoom { room_id } => write!(f, "unable to join room {}", room_id),
             Error::WebSocket => write!(f, "unable to connect to web socket"),
-            Error::NotInRoom => write!(f, "currently not connected to a room"),
+            Error::NotInRoom => write!(f, "not connected to room"),
             Error::Deserialization => write!(f, "unable to deserialize message"),
             Error::Serialization => write!(f, "unable to serialize message"),
             Error::SendMessage => write!(f, "unable to send message"),
+            Error::ReceiveMessage => write!(f, "unable to receive message"),
             Error::Timeout => write!(f, "request timed out"),
         }
     }

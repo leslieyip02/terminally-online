@@ -45,10 +45,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     _ => continue,
                 };
 
-                match chatbox.input(&key_event)? {
+                let input = match chatbox.input(&key_event) {
+                    Ok(input) => input,
+                    Err(e) => {
+                        chatbox.error(&e.to_string());
+                        continue;
+                    },
+                };
+
+                match input {
                     ChatboxInput::Message(content) => {
-                        if let Err(_) = room_client.send_chat_message(&content).await {
-                            chatbox.receive_error("unable to send message");
+                        if let Err(e) = room_client.send_chat_message(&content).await {
+                            chatbox.error(&e.to_string());
                         }
                     },
                     ChatboxInput::Command(command) => {
@@ -56,26 +64,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             ChatboxCommand::Create => {
                                 match room_client.create_and_connect_to_room().await {
                                     Ok(room_id) => {
-                                        // TODO: fix hack
-                                        chatbox.receive_error(&format!("id = {}", room_id));
+                                        chatbox.log(&format!("room id = {}", room_id));
                                     },
-                                    Err(_) => {
-                                        chatbox.receive_error("unable to create room");
+                                    Err(e) => {
+                                        chatbox.error(&e.to_string());
                                     }
                                 }
                             },
                             ChatboxCommand::Join {room_id} => {
                                 if let Err(e) = room_client.join_and_connect_to_room(&room_id).await {
-                                    let error = format!("unable to join room {}: {}", &room_id, e);
-                                    chatbox.receive_error(&error);
+                                    chatbox.error(&e.to_string());
                                 }
                             },
                             ChatboxCommand::Quit => break,
                         }
                     },
-                    ChatboxInput::Error(error) => {
-                        chatbox.receive_error(&error);
-                    }
                     ChatboxInput::Exit => break,
                     ChatboxInput::None => {},
                 }
@@ -84,9 +87,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             Some(message) = room_client.next() => {
                 let message = match message {
                     Ok(message) => message,
-                    Err(_) => {
-                        let error = format!("failed to receive message");
-                        chatbox.receive_error(&error);
+                    Err(e) => {
+                        chatbox.error(&e.to_string());
                         continue;
                     },
                 };
