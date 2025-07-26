@@ -6,9 +6,10 @@ import (
 	"log"
 	"net/http"
 	"sync"
+	"time"
 
-	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
+	"github.com/sqids/sqids-go"
 )
 
 type Room struct {
@@ -62,9 +63,12 @@ type RoomManager struct {
 	sessionManager *SessionManager
 }
 
-var upgrader = websocket.Upgrader{
-	CheckOrigin: func(r *http.Request) bool { return true },
-}
+var (
+	upgrader = websocket.Upgrader{
+		CheckOrigin: func(r *http.Request) bool { return true },
+	}
+	encoder, _ = sqids.New(sqids.Options{MinLength: 6})
+)
 
 func NewRoomManager(sessionManager *SessionManager) *RoomManager {
 	return &RoomManager{
@@ -148,8 +152,17 @@ func (m *RoomManager) createRoom() *Room {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
+	// TODO: feels hacky? should be ok for prototyping
+	var roomId, err = randomRoomId()
+	var _, ok = m.rooms[roomId]
+	for ok || err != nil {
+		log.Println(err)
+		roomId, err = randomRoomId()
+		_, ok = m.rooms[roomId]
+	}
+
 	room := &Room{
-		roomId:     uuid.New().String(),
+		roomId:     roomId,
 		clients:    make(map[*Client]bool),
 		broadcast:  make(chan []byte),
 		register:   make(chan *Client),
@@ -160,4 +173,9 @@ func (m *RoomManager) createRoom() *Room {
 
 	go room.run()
 	return room
+}
+
+func randomRoomId() (string, error) {
+	timestamp := uint64(time.Now().Unix())
+	return encoder.Encode([]uint64{timestamp})
 }
