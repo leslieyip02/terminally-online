@@ -1,30 +1,24 @@
-use std::time::Duration;
+use serde::Deserialize;
+use tokio::net::TcpStream;
+use tokio_tungstenite::{
+    MaybeTlsStream, WebSocketStream, connect_async, tungstenite::client::IntoClientRequest,
+};
 
-use futures::SinkExt;
-use reqwest::Client;
-use serde::{Deserialize, Serialize};
-use tokio_tungstenite::{connect_async, tungstenite::client::IntoClientRequest};
+pub type RoomStream = WebSocketStream<MaybeTlsStream<TcpStream>>;
 
-const REQUEST_TIMEOUT: Duration = Duration::from_millis(3000);
-
-#[derive(Deserialize)]
-pub struct CreateRoomResponse {
-    pub room: String,
-    pub token: String,
-}
+pub mod client;
+pub mod error;
+pub mod message;
 
 #[derive(Deserialize)]
-pub struct JoinRoomResponse {
-    pub token: String,
+struct CreateRoomResponse {
+    room: String,
+    token: String,
 }
 
-pub async fn create_room_with_timeout(
-    client: &Client,
+async fn create_room(
+    client: &reqwest::Client,
 ) -> Result<CreateRoomResponse, Box<dyn std::error::Error>> {
-    tokio::time::timeout(REQUEST_TIMEOUT, create_room(&client)).await?
-}
-
-async fn create_room(client: &Client) -> Result<CreateRoomResponse, Box<dyn std::error::Error>> {
     let url = "http://localhost:8080/create";
     let response = client
         .post(url)
@@ -35,15 +29,13 @@ async fn create_room(client: &Client) -> Result<CreateRoomResponse, Box<dyn std:
     Ok(response)
 }
 
-pub async fn join_room_with_timeout(
-    client: &Client,
-    room_id: &str,
-) -> Result<JoinRoomResponse, Box<dyn std::error::Error>> {
-    tokio::time::timeout(REQUEST_TIMEOUT, join_room(&client, &room_id)).await?
+#[derive(Deserialize)]
+struct JoinRoomResponse {
+    token: String,
 }
 
 async fn join_room(
-    client: &Client,
+    client: &reqwest::Client,
     room_id: &str,
 ) -> Result<JoinRoomResponse, Box<dyn std::error::Error>> {
     let url = format!("http://localhost:8080/join/{}", room_id);
@@ -56,23 +48,8 @@ async fn join_room(
     Ok(response)
 }
 
-#[derive(Serialize)]
-struct ChatMessage {
-    r#type: String,
-    content: String,
-}
-
-pub async fn connect_to_room(token: &str) -> Result<(), Box<dyn std::error::Error>> {
+async fn connect_to_room(token: &str) -> Result<RoomStream, Box<dyn std::error::Error>> {
     let url = format!("ws://localhost:8080/ws?token={}", token).into_client_request()?;
-    let (mut ws_stream, _) = connect_async(url).await?;
-    println!("WebSocket connected!");
-
-    let message = ChatMessage {
-        r#type: String::from("chat"),
-        content: String::from("abcd"),
-    };
-    let json = serde_json::to_string(&message)?;
-    ws_stream.send(json.into()).await?;
-
-    Ok(())
+    let (stream, _) = connect_async(url).await?;
+    Ok(stream)
 }

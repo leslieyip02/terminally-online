@@ -7,13 +7,16 @@ import (
 
 type Message struct {
 	Type    MessageType `json:"type"`
+	User    *string     `json:"user,omitempty"`
 	Content string      `json:"content"`
 }
 
 type MessageType string
 
 const (
-	MessageTypeChat MessageType = "chat"
+	MessageTypeChat  MessageType = "chat"
+	MessageTypeJoin  MessageType = "join"
+	MessageTypeLeave MessageType = "leave"
 )
 
 func parseMessage(data []byte) (Message, error) {

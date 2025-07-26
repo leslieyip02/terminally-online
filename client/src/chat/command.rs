@@ -75,13 +75,9 @@ impl Chatbox {
                 return Ok(ChatboxInput::None);
             }
             KeyCode::Enter => {
-                // TODO: remove debug
-                let cloned = self.typing_buffer.clone();
-                self.receive_message(&cloned);
-
-                let response = parse(&self.typing_buffer);
+                let input = parse(&self.typing_buffer);
                 self.typing_buffer.clear();
-                return Ok(response);
+                return Ok(input);
             }
             KeyCode::Esc => return Ok(ChatboxInput::Exit),
             _ => return Ok(ChatboxInput::None),

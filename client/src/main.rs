@@ -1,7 +1,6 @@
-use std::io::{Write, stdout};
-use std::time::Duration;
+use std::io::stdout;
 
-use client::room::{create_room_with_timeout, join_room_with_timeout};
+use client::room::client::RoomClient;
 use crossterm::{
     ExecutableCommand, QueueableCommand,
     cursor::MoveTo,
@@ -9,13 +8,11 @@ use crossterm::{
     terminal::{self, Clear, ClearType},
 };
 use futures::{FutureExt, StreamExt};
-use reqwest::Client;
 
 use client::chat::command::ChatboxInput;
 use client::{
     chat::{Chatbox, command::ChatboxCommand},
-    input::{InputType, webcam::Webcam},
-    ui::{Drawable, FRAME_DURATION, Printable, Ui},
+    ui::{Drawable, FRAME_DURATION},
 };
 
 #[tokio::main]
@@ -36,14 +33,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     chatbox.draw_border(&mut stdout)?;
     chatbox.draw(&mut stdout)?;
 
-    // let mut webcam = Webcam::new()?;
-    // let mut keyboard = Keyboard::new();
-    // let mut ui = Ui::new(&webcam)?;
-
     let mut input_stream = EventStream::new();
     let mut interval = tokio::time::interval(FRAME_DURATION);
-
-    let client = Client::new();
+    let mut room_client = RoomClient::new();
 
     loop {
         tokio::select! {
@@ -54,69 +46,48 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 };
 
                 match chatbox.input(&key_event)? {
-                    // TODO: implement
-                    ChatboxInput::Message(_) => {},
+                    ChatboxInput::Message(content) => {
+                        if let Err(_) = room_client.send_chat_message(&content).await {
+                            chatbox.receive_error("unable to send message");
+                        }
+                    },
                     ChatboxInput::Command(command) => {
                         match command {
                             ChatboxCommand::Create => {
-                                match create_room_with_timeout(&client).await {
-                                    Ok(_) => {},
-                                    Err(_) => {
-                                        chatbox.receive_error("unable to create room");
-                                    },
+                                if let Err(_) = room_client.create_and_connect_to_room().await {
+                                    chatbox.receive_error("unable to create room");
                                 }
                             },
                             ChatboxCommand::Join {room_id} => {
-                                match join_room_with_timeout(&client, &room_id).await {
-                                    Ok(_) => {},
-                                    Err(_) => {
-                                        let message = format!("unable to join room {}", &room_id);
-                                        chatbox.receive_error(&message);
-                                    },
+                                if let Err(_) = room_client.create_and_connect_to_room().await {
+                                    let error = format!("unable to join room {}", &room_id);
+                                    chatbox.receive_error(&error);
                                 }
                             },
                             ChatboxCommand::Quit => break,
                         }
                     },
-                    ChatboxInput::Error(message) => {
-                        chatbox.receive_error(&message);
+                    ChatboxInput::Error(error) => {
+                        chatbox.receive_error(&error);
                     }
                     ChatboxInput::Exit => break,
                     ChatboxInput::None => {},
                 }
                 chatbox.draw(&mut stdout)?;
-
-                // match event {
-                //     Some(Ok(Event::Key(event))) => {
-                //         match keyboard.input(&event)? {
-                //             InputType::Exit => break,
-                //             input => {
-                //                 ui.update(input)?;
-                //             },
-                //         }
-                //     },
-                //     _ => continue,
-                // }
             },
+            Some(message) = room_client.next() => {
+                let message = match message {
+                    Ok(message) => message,
+                    Err(_) => {
+                        let error = format!("failed to receive message");
+                        chatbox.receive_error(&error);
+                        continue;
+                    },
+                };
+                chatbox.receive_message(&message);
+                chatbox.draw(&mut stdout)?;
+            }
             _ = interval.tick() => {},
-            // // TODO: refactor
-            // event = input_stream.next().fuse() => {
-            //     match event {
-            //         Some(Ok(Event::Key(event))) => {
-            //             match keyboard.input(&event)? {
-            //                 InputType::Exit => break,
-            //                 input => {
-            //                     ui.update(input)?;
-            //                 },
-            //             }
-            //         },
-            //         _ => continue,
-            //     }
-            // },
-            // _ = interval.tick() => {
-            //     ui.update(InputType::Webcam { webcam: &mut webcam })?;
-            //     ui.print(&mut s)?
-            // }
         }
     }
 
@@ -125,13 +96,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .execute(Clear(ClearType::All))?
         .execute(crossterm::cursor::Show)?;
     terminal::disable_raw_mode()?;
-
-    // let client = Client::new();
-    // let response = create_room(&client).await?;
-    // println!("Created room: {}", response.room);
-
-    // println!("Received token: {}", response.token);
-    // connect_to_room(&response.token).await?;
 
     Ok(())
 }
