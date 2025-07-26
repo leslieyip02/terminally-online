@@ -25,30 +25,45 @@ func (r *Room) run() {
 		select {
 		case client := <-r.register:
 			r.clients[client] = true
+			r.broadcastMessage(newJoinMessage("TODO"))
 
 		case client := <-r.unregister:
 			if _, ok := r.clients[client]; ok {
 				delete(r.clients, client)
 				close(client.send)
 			}
+			r.broadcastMessage(newLeaveMessage("TODO"))
 
 		case data := <-r.broadcast:
 			r.log(fmt.Sprintf("received %s", string(data)))
-			message, err := parseMessage(data)
+			message, err := deserializeMessage(data)
 			if err != nil {
 				r.log(fmt.Sprintf("parsing error %s", err))
 			}
 
-			if message.Type == MessageTypeChat {
-				for client := range r.clients {
-					select {
-					case client.send <- data:
-					default:
-						close(client.send)
-						delete(r.clients, client)
-					}
-				}
+			switch message.Type {
+			case MessageTypeChat, MessageTypeJoin, MessageTypeLeave:
+				r.broadcastMessage(message)
+			default:
+				continue
 			}
+		}
+	}
+}
+
+func (r *Room) broadcastMessage(message RoomMessage) {
+	data, err := serializeMessage(&message)
+	if err != nil {
+		return
+	}
+
+	for client := range r.clients {
+		select {
+		case client.send <- data:
+		default:
+			close(client.send)
+			delete(r.clients, client)
+			r.broadcastMessage(newLeaveMessage("TODO"))
 		}
 	}
 }
@@ -98,7 +113,7 @@ func (m *RoomManager) HandleCreateRoom(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *RoomManager) HandleJoinRoom(w http.ResponseWriter, r *http.Request) {
-	roomId := r.URL.Query().Get("room")
+	roomId := r.PathValue("room")
 	_, ok := m.rooms[roomId]
 	if !ok {
 		http.Error(w, "invalid room", http.StatusNotFound)

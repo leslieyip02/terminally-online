@@ -54,13 +54,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     ChatboxInput::Command(command) => {
                         match command {
                             ChatboxCommand::Create => {
-                                if let Err(_) = room_client.create_and_connect_to_room().await {
-                                    chatbox.receive_error("unable to create room");
+                                match room_client.create_and_connect_to_room().await {
+                                    Ok(room_id) => {
+                                        // TODO: fix hack
+                                        chatbox.receive_error(&format!("id = {}", room_id));
+                                    },
+                                    Err(_) => {
+                                        chatbox.receive_error("unable to create room");
+                                    }
                                 }
                             },
                             ChatboxCommand::Join {room_id} => {
-                                if let Err(_) = room_client.create_and_connect_to_room().await {
-                                    let error = format!("unable to join room {}", &room_id);
+                                if let Err(e) = room_client.join_and_connect_to_room(&room_id).await {
+                                    let error = format!("unable to join room {}: {}", &room_id, e);
                                     chatbox.receive_error(&error);
                                 }
                             },

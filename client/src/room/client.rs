@@ -43,8 +43,6 @@ impl RoomClient {
             Err(e) => return Err(e),
         };
 
-        // TODO: send join message
-
         Ok(room)
     }
 
@@ -56,15 +54,13 @@ impl RoomClient {
 
         let token = match response {
             Ok(response) => response.token,
-            Err(_) => return Err(Error::CreateRoom),
+            Err(_) => return Err(Error::JoinRoom { room_id: String::from(room_id) }),
         };
 
         self.room_stream = match self.connect_to_room(&token).await {
             Ok(stream) => Some(stream),
             Err(e) => return Err(e),
         };
-
-        // TODO: send join message
 
         Ok(())
     }

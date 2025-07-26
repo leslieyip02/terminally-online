@@ -21,18 +21,20 @@ func main() {
 	sessionManager := room.NewSessionManager([]byte(jwtSecret))
 	roomManager := room.NewRoomManager(&sessionManager)
 
-	http.HandleFunc("/create", func(w http.ResponseWriter, r *http.Request) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /create", func(w http.ResponseWriter, r *http.Request) {
+		log.Println("[router] POST /create")
 		roomManager.HandleCreateRoom(w, r)
 	})
-
-	http.HandleFunc("/join", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("POST /join/{room}", func(w http.ResponseWriter, r *http.Request) {
+		log.Println("[router] POST /join/{room}")
 		roomManager.HandleJoinRoom(w, r)
 	})
-
-	http.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("GET /ws", func(w http.ResponseWriter, r *http.Request) {
+		log.Println("[router] GET /ws")
 		roomManager.HandleWebSocket(w, r)
 	})
 
 	log.Println("Server started on :8080")
-	log.Fatal(http.ListenAndServe(":8080", nil))
+	log.Fatal(http.ListenAndServe(":8080", mux))
 }
