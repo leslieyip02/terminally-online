@@ -1,14 +1,34 @@
 package room
 
 import (
+	"encoding/json"
 	"log"
+
+	"server/signaling"
 )
 
 type Room struct {
-	roomId     string
-	clients    map[*Client]bool
-	register   chan *Client
-	unregister chan *Client
+	roomId            string
+	clients           map[*RoomClient]bool
+	register          chan *RoomClient
+	unregister        chan *RoomClient
+	connectionManager signaling.ConnectionManager
+}
+
+func NewRoom(roomId string) (*Room, error) {
+	connectionManager, err := signaling.NewConnectionManager()
+	if err != nil {
+		return nil, err
+	}
+
+	room := Room{
+		roomId:            roomId,
+		clients:           make(map[*RoomClient]bool),
+		register:          make(chan *RoomClient),
+		unregister:        make(chan *RoomClient),
+		connectionManager: *connectionManager,
+	}
+	return &room, nil
 }
 
 func (r *Room) run() {
@@ -21,11 +41,11 @@ func (r *Room) run() {
 			log.Printf("[room %s] %s joined", r.roomId, client.username)
 
 			joinMessage := RoomMessage{
-				Type:     MessageTypeJoin,
-				Username: client.username,
+				Type:     RoomMessageTypeJoin,
+				Username: &client.username,
 				Content:  nil,
 			}
-			serialized, err := serializeMessage(&joinMessage)
+			serialized, err := json.Marshal(&joinMessage)
 			if err != nil {
 				continue
 			}
@@ -39,11 +59,11 @@ func (r *Room) run() {
 			log.Printf("[room %s] %s left", r.roomId, client.username)
 
 			leaveMessage := RoomMessage{
-				Type:     MessageTypeLeave,
-				Username: client.username,
+				Type:     RoomMessageTypeLeave,
+				Username: &client.username,
 				Content:  nil,
 			}
-			serialized, err := serializeMessage(&leaveMessage)
+			serialized, err := json.Marshal(&leaveMessage)
 			if err != nil {
 				continue
 			}
@@ -53,14 +73,20 @@ func (r *Room) run() {
 }
 
 func (r *Room) broadcastToAll(data []byte) {
-	r.broadcastExcluding(data, nil)
+	r.broadcastToAllExcept(data, nil)
 }
 
-func (r *Room) broadcastExcluding(data []byte, exclude *Client) {
+func (r *Room) broadcastToAllExcept(data []byte, exclude *RoomClient) {
 	for client := range r.clients {
 		if client == exclude {
 			continue
 		}
 		client.send <- data
 	}
+}
+
+func (r *Room) OnCandidateMessage(message *signaling.SignalMessage) {
+	log.Printf("[room %s] received candidate with payload: %s", r.roomId, message.Payload)
+
+	// TODO: implement in the future when dealing with media on the server side
 }

@@ -1,54 +1,43 @@
 package room
 
 import (
-	"log"
+	"server/signaling"
 
 	"github.com/gorilla/websocket"
 )
 
-type Client struct {
+type RoomClient struct {
 	username string
 	conn     *websocket.Conn
 	room     *Room
 	send     chan []byte
 }
 
-func (c *Client) readPump() {
+func (r *RoomClient) readPump() {
 	defer func() {
-		c.room.unregister <- c
-		c.conn.Close()
+		r.room.unregister <- r
+		r.conn.Close()
 	}()
 
 	for {
-		_, data, err := c.conn.ReadMessage()
+		_, data, err := r.conn.ReadMessage()
 		if err != nil {
 			break
 		}
 
-		message, err := deserializeMessage(data)
-		if err != nil {
-			log.Printf("[client %s] failed to deserialize %s", c.username, err)
-			continue
-		}
-		
-		switch message.Type {
-			case MessageTypeChat, MessageTypeJoin, MessageTypeLeave:
-				c.room.broadcastToAll(data)
-
-			case MessageTypeOffer, MessageTypeAnswer, MessageTypeCandidate:
-				c.room.broadcastExcluding(data, c)
-
-			default:
-				continue
+		if signaling.IsSignalMessage(data) {
+			r.room.broadcastToAllExcept(data, r)
+		} else {
+			r.room.broadcastToAll(data)
 		}
 	}
 }
 
-func (c *Client) writePump() {
-	defer c.conn.Close()
+func (r *RoomClient) writePump() {
+	defer r.conn.Close()
 
-	for msg := range c.send {
-		if err := c.conn.WriteMessage(websocket.TextMessage, msg); err != nil {
+	for data := range r.send {
+		if err := r.conn.WriteMessage(websocket.TextMessage, data); err != nil {
 			break
 		}
 	}

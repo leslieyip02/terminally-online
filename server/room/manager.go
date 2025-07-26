@@ -33,7 +33,12 @@ func NewRoomManager(sessionManager *SessionManager) *RoomManager {
 
 func (m *RoomManager) HandleCreateRoom(w http.ResponseWriter, r *http.Request) {
 	// TODO: check if user is already in a room
-	room := m.createRoom()
+	room, err := m.createRoom()
+	if err != nil {
+		http.Error(w, "unable to create room", http.StatusInternalServerError)
+		return
+	}
+	room.connectionManager.Init(room)
 
 	token, err := m.sessionManager.createToken(room.roomId)
 	if err != nil {
@@ -100,7 +105,7 @@ func (m *RoomManager) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	client := &Client{
+	client := &RoomClient{
 		username: username,
 		conn:     conn,
 		send:     make(chan []byte, 256),
@@ -112,7 +117,7 @@ func (m *RoomManager) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 	go client.writePump()
 }
 
-func (m *RoomManager) createRoom() *Room {
+func (m *RoomManager) createRoom() (*Room, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -125,16 +130,14 @@ func (m *RoomManager) createRoom() *Room {
 		_, ok = m.rooms[roomId]
 	}
 
-	room := &Room{
-		roomId:     roomId,
-		clients:    make(map[*Client]bool),
-		register:   make(chan *Client),
-		unregister: make(chan *Client),
+	room, err := NewRoom(roomId)
+	if err != nil {
+		return nil, err
 	}
 	m.rooms[room.roomId] = room
 
 	go room.run()
-	return room
+	return room, nil
 }
 
 func randomRoomId() (string, error) {
