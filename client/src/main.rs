@@ -1,5 +1,7 @@
 use std::io::{Write, stdout};
+use std::time::Duration;
 
+use client::room::{create_room_with_timeout, join_room_with_timeout};
 use crossterm::{
     ExecutableCommand, QueueableCommand,
     cursor::MoveTo,
@@ -9,11 +11,10 @@ use crossterm::{
 use futures::{FutureExt, StreamExt};
 use reqwest::Client;
 
-use client::{chat::command::ChatboxInput, room::join_room};
+use client::chat::command::ChatboxInput;
 use client::{
     chat::{Chatbox, command::ChatboxCommand},
     input::{InputType, webcam::Webcam},
-    room::{connect_to_room, create_room},
     ui::{Drawable, FRAME_DURATION, Printable, Ui},
 };
 
@@ -58,14 +59,28 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     ChatboxInput::Command(command) => {
                         match command {
                             ChatboxCommand::Create => {
-                                create_room(&client).await?;
+                                match create_room_with_timeout(&client).await {
+                                    Ok(_) => {},
+                                    Err(_) => {
+                                        chatbox.receive_error("unable to create room");
+                                    },
+                                }
                             },
                             ChatboxCommand::Join {room_id} => {
-                                join_room(&client, &room_id).await?;
+                                match join_room_with_timeout(&client, &room_id).await {
+                                    Ok(_) => {},
+                                    Err(_) => {
+                                        let message = format!("unable to join room {}", &room_id);
+                                        chatbox.receive_error(&message);
+                                    },
+                                }
                             },
                             ChatboxCommand::Quit => break,
                         }
                     },
+                    ChatboxInput::Error(message) => {
+                        chatbox.receive_error(&message);
+                    }
                     ChatboxInput::Exit => break,
                     ChatboxInput::None => {},
                 }

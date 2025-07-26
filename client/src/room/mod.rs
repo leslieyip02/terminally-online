@@ -1,7 +1,11 @@
+use std::time::Duration;
+
 use futures::SinkExt;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use tokio_tungstenite::{connect_async, tungstenite::client::IntoClientRequest};
+
+const REQUEST_TIMEOUT: Duration = Duration::from_millis(3000);
 
 #[derive(Deserialize)]
 pub struct CreateRoomResponse {
@@ -14,9 +18,13 @@ pub struct JoinRoomResponse {
     pub token: String,
 }
 
-pub async fn create_room(
+pub async fn create_room_with_timeout(
     client: &Client,
 ) -> Result<CreateRoomResponse, Box<dyn std::error::Error>> {
+    tokio::time::timeout(REQUEST_TIMEOUT, create_room(&client)).await?
+}
+
+async fn create_room(client: &Client) -> Result<CreateRoomResponse, Box<dyn std::error::Error>> {
     let url = "http://localhost:8080/create";
     let response = client
         .post(url)
@@ -27,7 +35,14 @@ pub async fn create_room(
     Ok(response)
 }
 
-pub async fn join_room(
+pub async fn join_room_with_timeout(
+    client: &Client,
+    room_id: &str,
+) -> Result<JoinRoomResponse, Box<dyn std::error::Error>> {
+    tokio::time::timeout(REQUEST_TIMEOUT, join_room(&client, &room_id)).await?
+}
+
+async fn join_room(
     client: &Client,
     room_id: &str,
 ) -> Result<JoinRoomResponse, Box<dyn std::error::Error>> {

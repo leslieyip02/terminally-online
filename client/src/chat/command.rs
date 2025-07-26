@@ -13,6 +13,7 @@ pub enum ChatboxCommand {
 pub enum ChatboxInput {
     Message(String),
     Command(ChatboxCommand),
+    Error(String),
     Exit,
     None,
 }
@@ -47,11 +48,17 @@ fn parse_command(input: &str) -> ChatboxInput {
 
     let command = match command.as_str() {
         CREATE_COMMAND => ChatboxCommand::Create,
-        JOIN_COMMAND => ChatboxCommand::Join {
-            room_id: tokens[1].clone(),
-        },
+        JOIN_COMMAND => {
+            if tokens.len() < 2 {
+                return ChatboxInput::Error(String::from("usage: /join <room_id>"));
+            }
+
+            ChatboxCommand::Join {
+                room_id: tokens[1].clone(),
+            }
+        }
         QUIT_COMMAND => ChatboxCommand::Quit,
-        _ => return ChatboxInput::None,
+        _ => return ChatboxInput::Error(String::from("invalid command")),
     };
     ChatboxInput::Command(command)
 }
@@ -69,7 +76,9 @@ impl Chatbox {
             }
             KeyCode::Enter => {
                 // TODO: remove debug
-                self.receive_message(self.typing_buffer.clone());
+                let cloned = self.typing_buffer.clone();
+                self.receive_message(&cloned);
+
                 let response = parse(&self.typing_buffer);
                 self.typing_buffer.clear();
                 return Ok(response);

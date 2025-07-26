@@ -39,7 +39,7 @@ impl Chatbox {
         self.width as usize - 2 * (Self::PADDING + 1) as usize
     }
 
-    pub fn receive_message(&mut self, message: String) {
+    pub fn receive_message(&mut self, message: &str) {
         textwrap::wrap(&message, self.line_width())
             .iter()
             .for_each(|line| {
@@ -49,6 +49,11 @@ impl Chatbox {
         while self.lines_buffer.len() > self.height as usize {
             self.lines_buffer.pop_front();
         }
+    }
+
+    // TODO: consider refactoring messages to use crossterm::style::StyledContent
+    pub fn receive_error(&mut self, message: &str) {
+        self.receive_message(&format!("[!] {}", message))
     }
 }
 
