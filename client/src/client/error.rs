@@ -1,14 +1,15 @@
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub enum Error {
     CreateRoom,
     JoinRoom { room_id: String },
     WebSocket,
-    NotInRoom,
+    NotConnected,
     Deserialization,
     Serialization,
     SendMessage,
     ReceiveMessage,
     Timeout,
+    WebRTC { error: webrtc::Error },
 }
 
 impl std::fmt::Display for Error {
@@ -17,12 +18,15 @@ impl std::fmt::Display for Error {
             Error::CreateRoom => write!(f, "unable to create room"),
             Error::JoinRoom { room_id } => write!(f, "unable to join room {}", room_id),
             Error::WebSocket => write!(f, "unable to connect to web socket"),
-            Error::NotInRoom => write!(f, "not connected to a room"),
+            Error::NotConnected => write!(f, "not connected to a room"),
             Error::Deserialization => write!(f, "unable to deserialize message"),
             Error::Serialization => write!(f, "unable to serialize message"),
             Error::SendMessage => write!(f, "unable to send message"),
             Error::ReceiveMessage => write!(f, "unable to receive message"),
             Error::Timeout => write!(f, "request timed out"),
+            Error::WebRTC { error } => write!(f, "{}", error),
         }
     }
 }
+
+impl std::error::Error for Error {}

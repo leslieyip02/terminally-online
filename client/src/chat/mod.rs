@@ -2,7 +2,10 @@ use std::{collections::VecDeque, io::Write};
 
 use crossterm::{QueueableCommand, cursor::MoveTo, style::Print};
 
-use crate::{room::message::RoomMessage, ui::Drawable};
+use crate::{
+    client::message::{Message, RoomMessage, SignalMessage},
+    ui::Drawable,
+};
 
 pub mod command;
 pub mod error;
@@ -40,9 +43,23 @@ impl Chatbox {
         self.width as usize - 2 * (Self::PADDING + 1) as usize
     }
 
-    // TODO: consider refactoring messages to use crossterm::style::StyledContent
-    pub fn receive_message(&mut self, message: &RoomMessage) {
-        let formatted = match message {
+    pub fn receive_message(&mut self, message: &Message) {
+        let room_message = match message {
+            Message::Room { room_message } => room_message,
+            // TODO: remove debug
+            // _ => return,
+            Message::Signal { signal_message } => {
+                let formatted = match signal_message {
+                    SignalMessage::Offer { payload } => String::from("offer"),
+                    SignalMessage::Answer { payload } => String::from("answer"),
+                    SignalMessage::Candidate { payload } => String::from("candidate"),
+                };
+                self.append_to_lines_buffer(&formatted);
+                return;
+            }
+        };
+
+        let formatted = match room_message {
             RoomMessage::Chat { username, content } => format!("[{}]: {}", username, content),
             RoomMessage::Join { username } => format!("> {} joined", username),
             RoomMessage::Leave { username } => format!("> {} left", username),

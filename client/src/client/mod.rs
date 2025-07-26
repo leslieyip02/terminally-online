@@ -1,24 +1,30 @@
-use std::{
-    pin::Pin,
-    task::{Context, Poll},
-    time::Duration,
-};
+use std::time::Duration;
 
-use futures::{SinkExt, Stream};
+use futures::SinkExt;
 use tokio::time::timeout;
-use tokio_tungstenite::tungstenite;
-
-use crate::room::{
-    RoomStream, connect_to_room, create_room, error::Error, join_room, message::RoomMessage,
+use webrtc::{
+    ice_transport::ice_candidate::RTCIceCandidateInit,
+    peer_connection::sdp::session_description::RTCSessionDescription,
 };
 
-pub struct RoomClient {
+use crate::client::{
+    error::Error,
+    message::{RoomMessage, SignalMessage},
+    room::{RoomStream, connect_to_room, create_room, join_room},
+};
+
+pub mod error;
+pub mod message;
+pub mod room;
+pub mod signaling;
+
+pub struct Client {
     username: String,
     http_client: reqwest::Client,
     room_stream: Option<RoomStream>,
 }
 
-impl RoomClient {
+impl Client {
     const TIMEOUT: Duration = Duration::from_millis(3000);
 
     pub fn new() -> Self {
@@ -86,11 +92,6 @@ impl RoomClient {
     }
 
     pub async fn send_chat_message(&mut self, content: &str) -> Result<(), Error> {
-        let stream = match &mut self.room_stream {
-            Some(stream) => stream,
-            None => return Err(Error::NotInRoom),
-        };
-
         let message = RoomMessage::Chat {
             username: self.username.clone(),
             content: String::from(content),
@@ -98,6 +99,15 @@ impl RoomClient {
         let json = match serde_json::to_string(&message) {
             Ok(json) => json,
             Err(_) => return Err(Error::Serialization),
+        };
+
+        self.send_message(json).await
+    }
+
+    pub(crate) async fn send_message(&mut self, json: String) -> Result<(), Error> {
+        let stream = match &mut self.room_stream {
+            Some(stream) => stream,
+            None => return Err(Error::NotConnected),
         };
 
         let response = match timeout(Self::TIMEOUT, stream.send(json.into())).await {
@@ -110,30 +120,51 @@ impl RoomClient {
             Err(_) => Err(Error::SendMessage),
         }
     }
-}
 
-impl Stream for RoomClient {
-    type Item = Result<RoomMessage, Error>;
+    // TODO: these can probably be removed
 
-    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        let stream = match self.room_stream.as_mut() {
-            Some(stream) => stream,
-            None => return Poll::Ready(None),
+    pub async fn send_offer_message(
+        &mut self,
+        payload: &RTCSessionDescription,
+    ) -> Result<(), Error> {
+        let message = SignalMessage::Offer {
+            payload: payload.clone(),
+        };
+        let json = match serde_json::to_string(&message) {
+            Ok(json) => json,
+            Err(_) => return Err(Error::Serialization),
         };
 
-        match Pin::new(stream).poll_next(cx) {
-            Poll::Ready(Some(Ok(message))) => match message {
-                tungstenite::Message::Text(utf8_bytes) => {
-                    match serde_json::from_str::<RoomMessage>(&utf8_bytes) {
-                        Ok(deserialized) => Poll::Ready(Some(Ok(deserialized))),
-                        Err(_) => Poll::Ready(Some(Err(Error::Deserialization))),
-                    }
-                }
-                _ => Poll::Ready(None),
-            },
-            Poll::Ready(Some(Err(_))) => Poll::Ready(Some(Err(Error::ReceiveMessage))),
-            Poll::Ready(None) => Poll::Ready(None),
-            Poll::Pending => Poll::Pending,
-        }
+        self.send_message(json).await
+    }
+
+    pub async fn send_answer_message(
+        &mut self,
+        payload: &RTCSessionDescription,
+    ) -> Result<(), Error> {
+        let message = SignalMessage::Answer {
+            payload: payload.clone(),
+        };
+        let json = match serde_json::to_string(&message) {
+            Ok(json) => json,
+            Err(_) => return Err(Error::Serialization),
+        };
+
+        self.send_message(json).await
+    }
+
+    pub async fn send_candidate_message(
+        &mut self,
+        payload: &RTCIceCandidateInit,
+    ) -> Result<(), Error> {
+        let message = SignalMessage::Candidate {
+            payload: payload.clone(),
+        };
+        let json = match serde_json::to_string(&message) {
+            Ok(json) => json,
+            Err(_) => return Err(Error::Serialization),
+        };
+
+        self.send_message(json).await
     }
 }

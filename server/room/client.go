@@ -1,6 +1,8 @@
 package room
 
 import (
+	"encoding/json"
+	"log"
 	"server/signaling"
 
 	"github.com/gorilla/websocket"
@@ -26,8 +28,18 @@ func (r *RoomClient) readPump() {
 		}
 
 		if signaling.IsSignalMessage(data) {
+			var message signaling.SignalMessage
+			if err := json.Unmarshal(data, &message); err == nil {
+				log.Printf("[client %s] sending %s message", r.username, message.Type)
+			}
+
 			r.room.broadcastToAllExcept(data, r)
 		} else {
+			var message RoomMessage
+			if err := json.Unmarshal(data, &message); err == nil {
+				log.Printf("[client %s] sending %s message", r.username, message.Type)
+			}
+
 			r.room.broadcastToAll(data)
 		}
 	}

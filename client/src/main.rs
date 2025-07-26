@@ -1,6 +1,9 @@
 use std::io::stdout;
 
-use client::room::client::RoomClient;
+use client::{
+    chat::command::Parser,
+    client::{Client, signaling::ConnectionManager},
+};
 use crossterm::{
     ExecutableCommand, QueueableCommand,
     cursor::MoveTo,
@@ -35,7 +38,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut input_stream = EventStream::new();
     let mut interval = tokio::time::interval(FRAME_DURATION);
-    let mut room_client = RoomClient::new();
+    let mut client = Client::new();
+    let mut connection_manager = ConnectionManager::new().await?;
+
+    // TODO: move into client?
+    let mut is_creator = false;
 
     loop {
         tokio::select! {
@@ -55,16 +62,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                 match input {
                     ChatboxInput::Message(content) => {
-                        if let Err(e) = room_client.send_chat_message(&content).await {
+                        if let Err(e) = client.send_chat_message(&content).await {
                             chatbox.error(&e.to_string());
                         }
                     },
                     ChatboxInput::Command(command) => {
                         match command {
                             ChatboxCommand::Create => {
-                                match room_client.create_and_connect_to_room().await {
+                                match client.create_and_connect_to_room().await {
                                     Ok(room_id) => {
                                         chatbox.log(&format!("room id = {}", room_id));
+                                        is_creator = true;
                                     },
                                     Err(e) => {
                                         chatbox.error(&e.to_string());
@@ -72,11 +80,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 }
                             },
                             ChatboxCommand::Join {room_id} => {
-                                if let Err(e) = room_client.join_and_connect_to_room(&room_id).await {
+                                if let Err(e) = client.join_and_connect_to_room(&room_id).await {
                                     chatbox.error(&e.to_string());
                                 }
                             },
-                            ChatboxCommand::Quit => break,
+                            ChatboxCommand::Exit => break,
                         }
                     },
                     ChatboxInput::Exit => break,
@@ -84,15 +92,38 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
                 chatbox.draw(&mut stdout)?;
             },
-            Some(message) = room_client.next() => {
+            Some(message) = client.next() => {
                 let message = match message {
                     Ok(message) => message,
                     Err(e) => {
                         chatbox.error(&e.to_string());
+                        chatbox.draw(&mut stdout)?;
                         continue;
                     },
                 };
+
+                match connection_manager.receive_message(&message, &mut client, is_creator).await {
+                    Ok(_) => {},
+                    Err(e) => chatbox.error(&e.to_string()),
+                }
+
                 chatbox.receive_message(&message);
+
+                // // TODO: hack
+                // if is_creator {
+                //     match message {
+                //         Message::Room { room_message } => {
+                //             match room_message {
+                //                 RoomMessage::Join { .. } => {
+                //                     connection_manager.create_offer(&mut room_client).await?;
+                //                 },
+                //                 _ => {},
+                //             }
+                //         },
+                //         _ => {},
+                //     }
+                // }
+
                 chatbox.draw(&mut stdout)?;
             }
             _ = interval.tick() => {},

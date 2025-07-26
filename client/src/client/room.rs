@@ -6,17 +6,13 @@ use tokio_tungstenite::{
 
 pub type RoomStream = WebSocketStream<MaybeTlsStream<TcpStream>>;
 
-pub mod client;
-pub mod error;
-pub mod message;
-
 #[derive(Deserialize)]
-struct CreateRoomResponse {
-    room: String,
-    token: String,
+pub(crate) struct CreateRoomResponse {
+    pub(crate) room: String,
+    pub(crate) token: String,
 }
 
-async fn create_room(
+pub(crate) async fn create_room(
     client: &reqwest::Client,
 ) -> Result<CreateRoomResponse, Box<dyn std::error::Error>> {
     let url = "http://localhost:8080/create";
@@ -30,11 +26,11 @@ async fn create_room(
 }
 
 #[derive(Deserialize)]
-struct JoinRoomResponse {
-    token: String,
+pub(crate) struct JoinRoomResponse {
+    pub(crate) token: String,
 }
 
-async fn join_room(
+pub(crate) async fn join_room(
     client: &reqwest::Client,
     room_id: &str,
 ) -> Result<JoinRoomResponse, Box<dyn std::error::Error>> {
@@ -48,7 +44,7 @@ async fn join_room(
     Ok(response)
 }
 
-async fn connect_to_room(
+pub(crate) async fn connect_to_room(
     token: &str,
     username: &str,
 ) -> Result<RoomStream, Box<dyn std::error::Error>> {

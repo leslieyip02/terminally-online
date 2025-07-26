@@ -7,7 +7,7 @@ use crate::chat::{Chatbox, error::Error};
 pub enum ChatboxCommand {
     Create,
     Join { room_id: String },
-    Quit,
+    Exit,
 }
 
 pub enum ChatboxInput {
@@ -20,6 +20,7 @@ pub enum ChatboxInput {
 const COMMAND_MARKER: &str = "/";
 const CREATE_COMMAND: &str = "/create";
 const JOIN_COMMAND: &str = "/join";
+const EXIT_COMMAND: &str = "/exit";
 const QUIT_COMMAND: &str = "/quit";
 
 fn parse_message(input: &str) -> Result<ChatboxInput, Error> {
@@ -50,23 +51,28 @@ fn parse_command(input: &str) -> Result<ChatboxInput, Error> {
                 room_id: tokens[1].clone(),
             }
         }
-        QUIT_COMMAND => ChatboxCommand::Quit,
+        EXIT_COMMAND => ChatboxCommand::Exit,
+        QUIT_COMMAND => ChatboxCommand::Exit,
         _ => return Err(Error::InvalidCommand),
     };
 
     Ok(ChatboxInput::Command(command))
 }
 
-impl Chatbox {
-    fn parse(&self, input: &str) -> Result<ChatboxInput, Error> {
-        if input.starts_with(COMMAND_MARKER) {
-            parse_command(input)
-        } else {
-            parse_message(input)
-        }
+fn parse(input: &str) -> Result<ChatboxInput, Error> {
+    if input.starts_with(COMMAND_MARKER) {
+        parse_command(input)
+    } else {
+        parse_message(input)
     }
+}
 
-    pub fn input(&mut self, key_event: &KeyEvent) -> Result<ChatboxInput, Error> {
+pub trait Parser {
+    fn input(&mut self, key_event: &KeyEvent) -> Result<ChatboxInput, Error>;
+}
+
+impl Parser for Chatbox {
+    fn input(&mut self, key_event: &KeyEvent) -> Result<ChatboxInput, Error> {
         match key_event.code {
             KeyCode::Char(c) => {
                 self.typing_buffer.push(c);
@@ -79,7 +85,7 @@ impl Chatbox {
             KeyCode::Enter => {
                 let input = self.typing_buffer.clone();
                 self.typing_buffer.clear();
-                self.parse(&input)
+                parse(&input)
             }
             KeyCode::Esc => return Ok(ChatboxInput::Exit),
             _ => return Ok(ChatboxInput::None),
