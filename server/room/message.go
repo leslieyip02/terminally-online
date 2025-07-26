@@ -14,26 +14,13 @@ type RoomMessage struct {
 type RoomMessageType string
 
 const (
-	MessageTypeChat  RoomMessageType = "chat"
-	MessageTypeJoin  RoomMessageType = "join"
-	MessageTypeLeave RoomMessageType = "leave"
+	MessageTypeChat      RoomMessageType = "chat"
+	MessageTypeJoin      RoomMessageType = "join"
+	MessageTypeLeave     RoomMessageType = "leave"
+	MessageTypeOffer     RoomMessageType = "offer"
+	MessageTypeAnswer    RoomMessageType = "answer"
+	MessageTypeCandidate RoomMessageType = "candidate"
 )
-
-func newJoinMessage(username string) RoomMessage {
-	return RoomMessage{
-		Type:     MessageTypeJoin,
-		Username: username,
-		Content:  nil,
-	}
-}
-
-func newLeaveMessage(username string) RoomMessage {
-	return RoomMessage{
-		Type:     MessageTypeLeave,
-		Username: username,
-		Content:  nil,
-	}
-}
 
 func deserializeMessage(data []byte) (RoomMessage, error) {
 	var message RoomMessage

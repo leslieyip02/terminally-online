@@ -1,6 +1,8 @@
 package room
 
 import (
+	"log"
+
 	"github.com/gorilla/websocket"
 )
 
@@ -18,12 +20,27 @@ func (c *Client) readPump() {
 	}()
 
 	for {
-		_, message, err := c.conn.ReadMessage()
+		_, data, err := c.conn.ReadMessage()
 		if err != nil {
 			break
 		}
 
-		c.room.broadcast <- message
+		message, err := deserializeMessage(data)
+		if err != nil {
+			log.Printf("[client %s] failed to deserialize %s", c.username, err)
+			continue
+		}
+		
+		switch message.Type {
+			case MessageTypeChat, MessageTypeJoin, MessageTypeLeave:
+				c.room.broadcastToAll(data)
+
+			case MessageTypeOffer, MessageTypeAnswer, MessageTypeCandidate:
+				c.room.broadcastExcluding(data, c)
+
+			default:
+				continue
+		}
 	}
 }
 
