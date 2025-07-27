@@ -9,6 +9,8 @@ pub enum Error {
     SendMessage,
     ReceiveMessage,
     Timeout,
+    AlreadyInitialized,
+    PeerConnectionNotReady,
     WebRTC { error: webrtc::Error },
 }
 
@@ -24,6 +26,8 @@ impl std::fmt::Display for Error {
             Error::SendMessage => write!(f, "unable to send message"),
             Error::ReceiveMessage => write!(f, "unable to receive message"),
             Error::Timeout => write!(f, "request timed out"),
+            Error::AlreadyInitialized => write!(f, "init() has already been called"),
+            Error::PeerConnectionNotReady => write!(f, "peer connection is not ready"),
             Error::WebRTC { error } => write!(f, "{}", error),
         }
     }

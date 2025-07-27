@@ -1,16 +1,17 @@
-use std::time::Duration;
+use std::{sync::Arc, time::Duration};
 
 use futures::SinkExt;
 use tokio::time::timeout;
-use webrtc::{
-    ice_transport::ice_candidate::RTCIceCandidateInit,
-    peer_connection::sdp::session_description::RTCSessionDescription,
-};
+use webrtc::peer_connection::{RTCPeerConnection, sdp::session_description::RTCSessionDescription};
 
-use crate::client::{
-    error::Error,
-    message::{RoomMessage, SignalMessage},
-    room::{RoomStream, connect_to_room, create_room, join_room},
+use crate::{
+    chat::command::{ChatboxCommand, ChatboxInput},
+    client::{
+        error::Error,
+        message::{Message, SignalMessage},
+        room::RoomStream,
+        signaling::create_peer_connction,
+    },
 };
 
 pub mod error;
@@ -22,6 +23,7 @@ pub struct Client {
     username: String,
     http_client: reqwest::Client,
     room_stream: Option<RoomStream>,
+    peer_connection: Option<Arc<RTCPeerConnection>>,
 }
 
 impl Client {
@@ -34,77 +36,20 @@ impl Client {
             username: username,
             http_client: reqwest::Client::new(),
             room_stream: None,
+            peer_connection: None,
         }
     }
 
-    pub async fn create_and_connect_to_room(&mut self) -> Result<String, Error> {
-        let response = match timeout(Self::TIMEOUT, create_room(&self.http_client)).await {
-            Ok(response) => response,
-            Err(_) => return Err(Error::Timeout),
-        };
-
-        let (room, token) = match response {
-            Ok(response) => (response.room, response.token),
-            Err(_) => return Err(Error::CreateRoom),
-        };
-
-        self.room_stream = match self.connect_to_room(&token).await {
-            Ok(stream) => Some(stream),
-            Err(e) => return Err(e),
-        };
-
-        Ok(room)
-    }
-
-    pub async fn join_and_connect_to_room(&mut self, room_id: &str) -> Result<(), Error> {
-        let response = match timeout(Self::TIMEOUT, join_room(&self.http_client, room_id)).await {
-            Ok(response) => response,
-            Err(_) => return Err(Error::Timeout),
-        };
-
-        let token = match response {
-            Ok(response) => response.token,
-            Err(_) => {
-                return Err(Error::JoinRoom {
-                    room_id: String::from(room_id),
-                });
-            }
-        };
-
-        self.room_stream = match self.connect_to_room(&token).await {
-            Ok(stream) => Some(stream),
-            Err(e) => return Err(e),
+    pub async fn init(&mut self) -> Result<(), Error> {
+        self.peer_connection = match create_peer_connction().await {
+            Ok(peer_connection) => Some(Arc::new(peer_connection)),
+            Err(e) => return Err(Error::WebRTC { error: e }),
         };
 
         Ok(())
     }
 
-    pub async fn connect_to_room(&self, token: &str) -> Result<RoomStream, Error> {
-        let response = match timeout(Self::TIMEOUT, connect_to_room(token, &self.username)).await {
-            Ok(response) => response,
-            Err(_) => return Err(Error::Timeout),
-        };
-
-        match response {
-            Ok(stream) => Ok(stream),
-            Err(_) => Err(Error::WebSocket),
-        }
-    }
-
-    pub async fn send_chat_message(&mut self, content: &str) -> Result<(), Error> {
-        let message = RoomMessage::Chat {
-            username: self.username.clone(),
-            content: String::from(content),
-        };
-        let json = match serde_json::to_string(&message) {
-            Ok(json) => json,
-            Err(_) => return Err(Error::Serialization),
-        };
-
-        self.send_message(json).await
-    }
-
-    pub(crate) async fn send_message(&mut self, json: String) -> Result<(), Error> {
+    async fn send_message(&mut self, json: String) -> Result<(), Error> {
         let stream = match &mut self.room_stream {
             Some(stream) => stream,
             None => return Err(Error::NotConnected),
@@ -121,50 +66,59 @@ impl Client {
         }
     }
 
-    // TODO: these can probably be removed
-
-    pub async fn send_offer_message(
-        &mut self,
-        payload: &RTCSessionDescription,
-    ) -> Result<(), Error> {
-        let message = SignalMessage::Offer {
-            payload: payload.clone(),
-        };
-        let json = match serde_json::to_string(&message) {
-            Ok(json) => json,
-            Err(_) => return Err(Error::Serialization),
-        };
-
-        self.send_message(json).await
+    pub async fn receive_input(&mut self, input: &ChatboxInput) -> Result<Option<String>, Error> {
+        match input {
+            ChatboxInput::Message(content) => {
+                self.send_chat_message(content).await?;
+                Ok(None)
+            }
+            ChatboxInput::Command(command) => match command {
+                ChatboxCommand::Create => {
+                    let room_id = self.create_and_connect_to_room().await?;
+                    Ok(format!("room id = {}", room_id).into())
+                }
+                ChatboxCommand::Join { room_id } => {
+                    self.join_and_connect_to_room(room_id).await?;
+                    Ok(None)
+                }
+                ChatboxCommand::Stream => {
+                    self.send_offer_message().await?;
+                    Ok(None)
+                }
+                _ => Ok(None),
+            },
+            _ => Ok(None),
+        }
     }
 
-    pub async fn send_answer_message(
-        &mut self,
-        payload: &RTCSessionDescription,
-    ) -> Result<(), Error> {
-        let message = SignalMessage::Answer {
-            payload: payload.clone(),
-        };
-        let json = match serde_json::to_string(&message) {
-            Ok(json) => json,
-            Err(_) => return Err(Error::Serialization),
-        };
+    pub async fn receive_message(&mut self, message: &Message) -> Result<(), Error> {
+        match message {
+            Message::Room { .. } => Ok(()),
+            Message::Signal { signal_message } => {
+                let peer_connection = match &mut self.peer_connection {
+                    Some(peer_connection) => peer_connection,
+                    None => return Err(Error::PeerConnectionNotReady),
+                };
 
-        self.send_message(json).await
+                match signal_message {
+                    SignalMessage::Offer { payload } => self.handle_offer_message(&payload).await,
+                    SignalMessage::Answer { payload } => Ok(()),
+                    SignalMessage::Candidate { payload } => Ok(()),
+                }
+            }
+        }
     }
+}
 
-    pub async fn send_candidate_message(
-        &mut self,
-        payload: &RTCIceCandidateInit,
-    ) -> Result<(), Error> {
-        let message = SignalMessage::Candidate {
-            payload: payload.clone(),
-        };
-        let json = match serde_json::to_string(&message) {
-            Ok(json) => json,
-            Err(_) => return Err(Error::Serialization),
-        };
+pub(crate) trait RoomHandler {
+    async fn create_and_connect_to_room(&mut self) -> Result<String, Error>;
+    async fn join_and_connect_to_room(&mut self, room_id: &str) -> Result<(), Error>;
+    async fn connect_to_room(&self, token: &str) -> Result<RoomStream, Error>;
+    async fn send_chat_message(&mut self, content: &str) -> Result<(), Error>;
+}
 
-        self.send_message(json).await
-    }
+pub(crate) trait SignalHandler {
+    async fn send_offer_message(&mut self) -> Result<(), Error>;
+    async fn handle_offer_message(&mut self, offer: &RTCSessionDescription) -> Result<(), Error>;
+    async fn handle_answer_message() -> Result<(), Error>;
 }

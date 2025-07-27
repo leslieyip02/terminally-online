@@ -7,6 +7,7 @@ use crate::chat::{Chatbox, error::Error};
 pub enum ChatboxCommand {
     Create,
     Join { room_id: String },
+    Stream,
     Exit,
 }
 
@@ -22,6 +23,9 @@ const CREATE_COMMAND: &str = "/create";
 const JOIN_COMMAND: &str = "/join";
 const EXIT_COMMAND: &str = "/exit";
 const QUIT_COMMAND: &str = "/quit";
+
+// TODO: reconsider this?
+const STREAM_COMMAND: &str = "/stream";
 
 fn parse_message(input: &str) -> Result<ChatboxInput, Error> {
     Ok(ChatboxInput::Message(String::from(input)))
@@ -53,6 +57,7 @@ fn parse_command(input: &str) -> Result<ChatboxInput, Error> {
         }
         EXIT_COMMAND => ChatboxCommand::Exit,
         QUIT_COMMAND => ChatboxCommand::Exit,
+        STREAM_COMMAND => ChatboxCommand::Stream,
         _ => return Err(Error::InvalidCommand),
     };
 

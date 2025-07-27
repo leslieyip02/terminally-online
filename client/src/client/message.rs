@@ -7,7 +7,7 @@ use futures::Stream;
 use serde::{Deserialize, Serialize};
 use tokio_tungstenite::tungstenite;
 use webrtc::{
-    ice_transport::ice_candidate::RTCIceCandidateInit,
+    ice_transport::ice_candidate::RTCIceCandidate,
     peer_connection::sdp::session_description::RTCSessionDescription,
 };
 
@@ -49,7 +49,7 @@ pub enum SignalMessage {
     Answer { payload: RTCSessionDescription },
 
     #[serde(rename = "candidate")]
-    Candidate { payload: RTCIceCandidateInit },
+    Candidate { payload: RTCIceCandidate },
 }
 
 impl Stream for Client {
