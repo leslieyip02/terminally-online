@@ -1,9 +1,3 @@
-use std::{
-    pin::Pin,
-    task::{Context, Poll},
-};
-
-use futures::Stream;
 use serde::{Deserialize, Serialize};
 use tokio_tungstenite::tungstenite;
 use webrtc::{
@@ -11,7 +5,7 @@ use webrtc::{
     peer_connection::sdp::session_description::RTCSessionDescription,
 };
 
-use crate::client::{Client, error::Error};
+use crate::client::error::Error;
 
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(untagged)]
@@ -52,28 +46,11 @@ pub enum SignalMessage {
     Candidate { payload: RTCIceCandidate },
 }
 
-impl Stream for Client {
-    type Item = Result<Message, Error>;
+pub(crate) fn convert_stream_message(message: &tungstenite::Message) -> Result<Message, Error> {
+    let data = match message {
+        tungstenite::Message::Text(data) => data,
+        _ => return Err(Error::Deserialization),
+    };
 
-    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        let stream = match self.room_stream.as_mut() {
-            Some(stream) => stream,
-            None => return Poll::Ready(None),
-        };
-
-        match Pin::new(stream).poll_next(cx) {
-            Poll::Ready(Some(Ok(message))) => match message {
-                tungstenite::Message::Text(utf8_bytes) => {
-                    match serde_json::from_str::<Message>(&utf8_bytes) {
-                        Ok(deserialized) => Poll::Ready(Some(Ok(deserialized))),
-                        Err(_) => Poll::Ready(Some(Err(Error::Deserialization))),
-                    }
-                }
-                _ => Poll::Ready(None),
-            },
-            Poll::Ready(Some(Err(_))) => Poll::Ready(Some(Err(Error::ReceiveMessage))),
-            Poll::Ready(None) => Poll::Ready(None),
-            Poll::Pending => Poll::Pending,
-        }
-    }
+    serde_json::from_str::<Message>(&data).map_err(|_| Error::Deserialization)
 }

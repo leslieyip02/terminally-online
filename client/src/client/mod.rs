@@ -1,16 +1,18 @@
 use std::{sync::Arc, time::Duration};
 
 use futures::SinkExt;
-use tokio::time::timeout;
-use webrtc::peer_connection::{RTCPeerConnection, sdp::session_description::RTCSessionDescription};
+use tokio::{sync::mpsc::Receiver, time::timeout};
+use webrtc::{
+    ice_transport::ice_candidate::RTCIceCandidateInit,
+    peer_connection::{RTCPeerConnection, sdp::session_description::RTCSessionDescription},
+};
 
 use crate::{
     chat::command::{ChatboxCommand, ChatboxInput},
     client::{
         error::Error,
         message::{Message, SignalMessage},
-        room::RoomStream,
-        signaling::create_peer_connction,
+        room::{MessageReceiver, WriteStream},
     },
 };
 
@@ -22,7 +24,8 @@ pub mod signaling;
 pub struct Client {
     username: String,
     http_client: reqwest::Client,
-    room_stream: Option<RoomStream>,
+    write_stream: Option<WriteStream>,
+    message_receiver: Option<Receiver<Result<Message, Error>>>,
     peer_connection: Option<Arc<RTCPeerConnection>>,
 }
 
@@ -35,27 +38,19 @@ impl Client {
         Self {
             username: username,
             http_client: reqwest::Client::new(),
-            room_stream: None,
+            write_stream: None,
+            message_receiver: None,
             peer_connection: None,
         }
     }
 
-    pub async fn init(&mut self) -> Result<(), Error> {
-        self.peer_connection = match create_peer_connction().await {
-            Ok(peer_connection) => Some(Arc::new(peer_connection)),
-            Err(e) => return Err(Error::WebRTC { error: e }),
-        };
-
-        Ok(())
-    }
-
-    async fn send_message(&mut self, json: String) -> Result<(), Error> {
-        let stream = match &mut self.room_stream {
+    async fn send_message(&mut self, json_string: String) -> Result<(), Error> {
+        let stream = match &mut self.write_stream {
             Some(stream) => stream,
             None => return Err(Error::NotConnected),
         };
 
-        let response = match timeout(Self::TIMEOUT, stream.send(json.into())).await {
+        let response = match timeout(Self::TIMEOUT, stream.send(json_string.into())).await {
             Ok(response) => response,
             Err(_) => return Err(Error::Timeout),
         };
@@ -69,7 +64,7 @@ impl Client {
     pub async fn receive_input(&mut self, input: &ChatboxInput) -> Result<Option<String>, Error> {
         match input {
             ChatboxInput::Message(content) => {
-                self.send_chat_message(content).await?;
+                self.send_chat(content).await?;
                 Ok(None)
             }
             ChatboxInput::Command(command) => match command {
@@ -82,7 +77,7 @@ impl Client {
                     Ok(None)
                 }
                 ChatboxCommand::Stream => {
-                    self.send_offer_message().await?;
+                    self.send_offer().await?;
                     Ok(None)
                 }
                 _ => Ok(None),
@@ -94,18 +89,18 @@ impl Client {
     pub async fn receive_message(&mut self, message: &Message) -> Result<(), Error> {
         match message {
             Message::Room { .. } => Ok(()),
-            Message::Signal { signal_message } => {
-                let peer_connection = match &mut self.peer_connection {
-                    Some(peer_connection) => peer_connection,
-                    None => return Err(Error::PeerConnectionNotReady),
-                };
+            Message::Signal { signal_message } => match signal_message {
+                SignalMessage::Offer { payload } => self.handle_offer(&payload).await,
+                SignalMessage::Answer { payload } => self.handle_answer(&payload).await,
+                SignalMessage::Candidate { payload } => Ok(()),
+            },
+        }
+    }
 
-                match signal_message {
-                    SignalMessage::Offer { payload } => self.handle_offer_message(&payload).await,
-                    SignalMessage::Answer { payload } => Ok(()),
-                    SignalMessage::Candidate { payload } => Ok(()),
-                }
-            }
+    pub async fn poll_message(&mut self) -> Option<Result<Message, Error>> {
+        match self.message_receiver.as_mut() {
+            Some(rx) => rx.recv().await,
+            None => None,
         }
     }
 }
@@ -113,12 +108,13 @@ impl Client {
 pub(crate) trait RoomHandler {
     async fn create_and_connect_to_room(&mut self) -> Result<String, Error>;
     async fn join_and_connect_to_room(&mut self, room_id: &str) -> Result<(), Error>;
-    async fn connect_to_room(&self, token: &str) -> Result<RoomStream, Error>;
-    async fn send_chat_message(&mut self, content: &str) -> Result<(), Error>;
+    async fn connect_to_room(&self, token: &str) -> Result<(WriteStream, MessageReceiver), Error>;
+    async fn send_chat(&mut self, content: &str) -> Result<(), Error>;
 }
 
 pub(crate) trait SignalHandler {
-    async fn send_offer_message(&mut self) -> Result<(), Error>;
-    async fn handle_offer_message(&mut self, offer: &RTCSessionDescription) -> Result<(), Error>;
-    async fn handle_answer_message() -> Result<(), Error>;
+    async fn send_offer(&mut self) -> Result<(), Error>;
+    async fn handle_offer(&mut self, offer: &RTCSessionDescription) -> Result<(), Error>;
+    async fn handle_answer(&mut self, answer: &RTCSessionDescription) -> Result<(), Error>;
+    async fn handle_candidate(&mut self, candidate: &RTCIceCandidateInit) -> Result<(), Error>;
 }

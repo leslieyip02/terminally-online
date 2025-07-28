@@ -1,4 +1,4 @@
-use std::io::stdout;
+use std::{io::stdout, sync::Arc};
 
 use client::{chat::command::Parser, client::Client};
 use crossterm::{
@@ -14,6 +14,7 @@ use client::{
     chat::{Chatbox, command::ChatboxCommand},
     ui::{Drawable, FRAME_DURATION},
 };
+use tokio::sync::Mutex;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -35,13 +36,42 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut input_stream = EventStream::new();
     let mut interval = tokio::time::interval(FRAME_DURATION);
-    let mut client = Client::new();
-    client.init().await?;
+    let client = Arc::new(Mutex::new(Client::new()));
+    // init_peer_connection(&client).await?;
 
     loop {
+        let mut client_guard = client.lock().await;
+        let poll_future = client_guard.poll_message();
+
         tokio::select! {
-            Some(event) = input_stream.next().fuse() => {
-                let key_event = match event {
+            Some(message) = poll_future => {
+                drop(client_guard);
+
+                let message = match message {
+                    Ok(message) => message,
+                    Err(e) => {
+                        chatbox.error(&e.to_string());
+                        chatbox.draw(&mut stdout)?;
+                        continue;
+                    },
+                };
+
+                let mut client_mut = client.lock().await;
+                match client_mut.receive_message(&message).await {
+                    Ok(_) => {},
+                    Err(e) => {
+                        chatbox.error(&e.to_string());
+                    },
+                }
+
+                chatbox.receive_message(&message);
+                chatbox.draw(&mut stdout)?;
+            }
+
+            Some(input) = input_stream.next().fuse() => {
+                drop(client_guard);
+
+                let key_event = match input {
                     Ok(Event::Key(key_event)) => key_event,
                     _ => continue,
                 };
@@ -64,7 +94,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     _ => {},
                 }
 
-                let input_response = match client.receive_input(&input).await {
+                let mut client_mut = client.lock().await;
+                let input_response = match client_mut.receive_input(&input).await {
                     Ok(input_response) => input_response,
                     Err(e) => {
                         chatbox.error(&e.to_string());
@@ -81,21 +112,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 chatbox.draw(&mut stdout)?;
             }
 
-            Some(message) = client.next() => {
-                let message = match message {
-                    Ok(message) => message,
-                    Err(e) => {
-                        chatbox.error(&e.to_string());
-                        chatbox.draw(&mut stdout)?;
-                        continue;
-                    },
-                };
-
-                chatbox.receive_message(&message);
-                chatbox.draw(&mut stdout)?;
-            }
-
-            _ = interval.tick() => {},
+            _ = interval.tick() => {
+                drop(client_guard);
+            },
         }
     }
 
