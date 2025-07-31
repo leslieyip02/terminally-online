@@ -1,6 +1,9 @@
 use std::{io::stdout, sync::Arc};
 
-use client::{chat::command::Parser, client::Client};
+use client::{
+    chat::command::Parser,
+    client::{Client, signaling::init_peer_connection},
+};
 use crossterm::{
     ExecutableCommand, QueueableCommand,
     cursor::MoveTo,
@@ -37,7 +40,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut input_stream = EventStream::new();
     let mut interval = tokio::time::interval(FRAME_DURATION);
     let client = Arc::new(Mutex::new(Client::new()));
-    // init_peer_connection(&client).await?;
+    init_peer_connection(&client).await?;
 
     loop {
         let mut client_guard = client.lock().await;

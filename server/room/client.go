@@ -30,14 +30,14 @@ func (r *RoomClient) readPump() {
 		if signaling.IsSignalMessage(data) {
 			var message signaling.SignalMessage
 			if err := json.Unmarshal(data, &message); err == nil {
-				log.Printf("[client %s] sending %s message", r.username, message.Type)
+				log.Printf("[client %s] sending %s message with payload %s", r.username, message.Type, message.Payload)
 			}
 
 			r.room.broadcastToAllExcept(data, r)
 		} else {
 			var message RoomMessage
 			if err := json.Unmarshal(data, &message); err == nil {
-				log.Printf("[client %s] sending %s message", r.username, message.Type)
+				log.Printf("[client %s] sending %s message with payload %s", r.username, message.Type, *message.Content)
 			}
 
 			r.room.broadcastToAll(data)

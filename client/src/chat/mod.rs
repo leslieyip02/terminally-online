@@ -50,9 +50,9 @@ impl Chatbox {
             // _ => return,
             Message::Signal { signal_message } => {
                 let formatted = match signal_message {
-                    SignalMessage::Offer { payload } => String::from("offer"),
-                    SignalMessage::Answer { payload } => String::from("answer"),
-                    SignalMessage::Candidate { payload } => String::from("candidate"),
+                    SignalMessage::Offer { .. } => String::from("offer"),
+                    SignalMessage::Answer { .. } => String::from("answer"),
+                    SignalMessage::Candidate { .. } => String::from("candidate"),
                 };
                 self.append_to_lines_buffer(&formatted);
                 return;

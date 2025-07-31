@@ -92,7 +92,7 @@ impl Client {
             Message::Signal { signal_message } => match signal_message {
                 SignalMessage::Offer { payload } => self.handle_offer(&payload).await,
                 SignalMessage::Answer { payload } => self.handle_answer(&payload).await,
-                SignalMessage::Candidate { payload } => Ok(()),
+                SignalMessage::Candidate { payload } => self.handle_candidate(&payload).await,
             },
         }
     }

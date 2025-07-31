@@ -55,6 +55,9 @@ pub async fn init_peer_connection(client: &Arc<Mutex<Client>>) -> Result<(), Err
         Err(e) => return Err(Error::WebRTC { error: e }),
     };
 
+    // TODO: add media tracks
+    // peer_connection.add_track(todo!());
+
     let weak_client = Arc::downgrade(&client);
     peer_connection.on_ice_candidate(Box::new(move |candidate: Option<RTCIceCandidate>| {
         let inner_weak_client = weak_client.clone();
@@ -64,7 +67,12 @@ pub async fn init_peer_connection(client: &Arc<Mutex<Client>>) -> Result<(), Err
                 None => return,
             };
 
-            let message = SignalMessage::Candidate { payload: candidate };
+            let payload = match candidate.to_json() {
+                Ok(payload) => payload,
+                Err(_) => return,
+            };
+
+            let message = SignalMessage::Candidate { payload: payload };
             let json_string = match serde_json::to_string(&message) {
                 Ok(json) => json,
                 Err(_) => return,
@@ -79,6 +87,8 @@ pub async fn init_peer_connection(client: &Arc<Mutex<Client>>) -> Result<(), Err
             let _ = client.send_message(json_string).await;
         })
     }));
+
+    client.lock().await.peer_connection = Some(Arc::new(peer_connection));
 
     Ok(())
 }
@@ -150,9 +160,7 @@ impl SignalHandler for Client {
         peer_connection
             .set_remote_description(answer.clone())
             .await
-            .map_err(|e| Error::WebRTC { error: e })?;
-
-        Ok(())
+            .map_err(|e| Error::WebRTC { error: e })
     }
 
     async fn handle_candidate(&mut self, candidate: &RTCIceCandidateInit) -> Result<(), Error> {
@@ -164,8 +172,6 @@ impl SignalHandler for Client {
         peer_connection
             .add_ice_candidate(candidate.clone())
             .await
-            .map_err(|e| Error::WebRTC { error: e })?;
-
-        Ok(())
+            .map_err(|e| Error::WebRTC { error: e })
     }
 }

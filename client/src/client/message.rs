@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use tokio_tungstenite::tungstenite;
 use webrtc::{
-    ice_transport::ice_candidate::RTCIceCandidate,
+    ice_transport::ice_candidate::RTCIceCandidateInit,
     peer_connection::sdp::session_description::RTCSessionDescription,
 };
 
@@ -43,7 +43,7 @@ pub enum SignalMessage {
     Answer { payload: RTCSessionDescription },
 
     #[serde(rename = "candidate")]
-    Candidate { payload: RTCIceCandidate },
+    Candidate { payload: RTCIceCandidateInit },
 }
 
 pub(crate) fn convert_stream_message(message: &tungstenite::Message) -> Result<Message, Error> {
