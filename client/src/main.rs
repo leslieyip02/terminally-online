@@ -2,7 +2,10 @@ use std::{io::stdout, sync::Arc};
 
 use client::{
     chat::command::Parser,
-    client::{Client, signaling::init_peer_connection},
+    client::{
+        Client,
+        signaling::{init_peer_connection, send_video},
+    },
 };
 use crossterm::{
     ExecutableCommand, QueueableCommand,
@@ -18,9 +21,26 @@ use client::{
     ui::{Drawable, FRAME_DURATION},
 };
 use tokio::sync::Mutex;
+use tracing_appender::rolling;
+
+fn init_logging() {
+    // Log file will rotate daily under ./logs/
+    let file_appender = rolling::daily("logs", "app.log");
+
+    let subscriber = tracing_subscriber::fmt()
+        .with_writer(file_appender)
+        .with_ansi(false) // no colors in file
+        .with_thread_names(true)
+        .with_thread_ids(true)
+        .finish();
+
+    tracing::subscriber::set_global_default(subscriber).expect("setting default subscriber failed");
+}
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    init_logging();
+
     let mut stdout = stdout();
     stdout
         .execute(MoveTo(0, 0))?
@@ -90,6 +110,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                 match &input {
                     ChatboxInput::Command(command) => match command {
+                        // TODO: temporary for testing
+                        ChatboxCommand::Stream => {
+                            send_video(&client).await?;
+                        },
                         ChatboxCommand::Exit => break,
                         _ => {},
                     },
