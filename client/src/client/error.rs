@@ -11,6 +11,7 @@ pub enum Error {
     Timeout,
     AlreadyInitialized,
     PeerConnectionNotReady,
+    WebcamNotReady,
     WebRTC { error: webrtc::Error },
 }
 
@@ -28,6 +29,7 @@ impl std::fmt::Display for Error {
             Error::Timeout => write!(f, "request timed out"),
             Error::AlreadyInitialized => write!(f, "init() has already been called"),
             Error::PeerConnectionNotReady => write!(f, "peer connection is not ready"),
+            Error::WebcamNotReady => write!(f, "webcam is not ready"),
             Error::WebRTC { error } => write!(f, "{}", error),
         }
     }

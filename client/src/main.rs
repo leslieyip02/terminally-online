@@ -2,10 +2,8 @@ use std::{io::stdout, sync::Arc};
 
 use client::{
     chat::command::Parser,
-    client::{
-        Client,
-        signaling::{init_peer_connection, send_video},
-    },
+    client::{Client, signaling::init_peer_connection},
+    video::VideoPanel,
 };
 use crossterm::{
     ExecutableCommand, QueueableCommand,
@@ -57,10 +55,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     chatbox.draw_border(&mut stdout)?;
     chatbox.draw(&mut stdout)?;
 
+    let mut video_panel = VideoPanel::new()?;
+
     let mut input_stream = EventStream::new();
     let mut interval = tokio::time::interval(FRAME_DURATION);
     let client = Arc::new(Mutex::new(Client::new()));
-    init_peer_connection(&client).await?;
+
+    let mut frame_receiver = init_peer_connection(&client).await?;
 
     loop {
         let mut client_guard = client.lock().await;
@@ -110,10 +111,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                 match &input {
                     ChatboxInput::Command(command) => match command {
-                        // TODO: temporary for testing
-                        ChatboxCommand::Stream => {
-                            send_video(&client).await?;
-                        },
                         ChatboxCommand::Exit => break,
                         _ => {},
                     },
@@ -137,7 +134,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
 
                 chatbox.draw(&mut stdout)?;
-            }
+            },
+
+            Some(frame) = frame_receiver.recv() => {
+                match video_panel.receive_frame(&frame) {
+                    Ok(_) => {},
+                    Err(e) => {
+                        chatbox.error(&e.to_string());
+                        chatbox.draw(&mut stdout)?;
+                        continue;
+                    },
+                }
+            },
 
             _ = interval.tick() => {
                 drop(client_guard);
