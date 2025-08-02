@@ -18,7 +18,7 @@ use tokio::{
 };
 use tracing::info;
 
-use crate::video::encoding::split_prefix_code;
+use crate::video::encoding::get_prefix_code;
 
 pub struct Webcam {
     receiver: Option<UnboundedReceiver<Bytes>>,
@@ -110,8 +110,9 @@ impl Webcam {
                 openh264::nal_units(&h264_encoded_buffer)
                     .map(Bytes::copy_from_slice)
                     .for_each(|nal_unit| {
-                        match split_prefix_code(&nal_unit) {
-                            Ok((nal_type, _)) => info!("sending nal type: {}", nal_type as u8),
+                        // TODO: remove log
+                        match get_prefix_code(&nal_unit) {
+                            Ok(nal_type) => info!("sending nal type: {}", nal_type as u8),
                             Err(e) => info!("{}", e),
                         }
 

@@ -3,7 +3,7 @@ use openh264::formats::YUVSource;
 use tracing::info;
 
 use crate::video::{
-    encoding::{NAL_PREFIX_CODE, NalType, split_prefix_code},
+    encoding::{NalType, get_prefix_code},
     error::Error,
 };
 
@@ -12,10 +12,10 @@ pub mod error;
 pub mod webcam;
 pub struct VideoPanel {
     h264_decoder: openh264::decoder::Decoder,
-    rgb_buffer: Vec<u8>,
     sps: Option<Vec<u8>>,
     pps: Option<Vec<u8>>,
     frame_buffer: Vec<u8>,
+    rgb_buffer: Vec<u8>,
 }
 
 impl VideoPanel {
@@ -25,35 +25,21 @@ impl VideoPanel {
 
         Ok(Self {
             h264_decoder,
-            rgb_buffer: Vec::new(),
             sps: None,
             pps: None,
             frame_buffer: Vec::new(),
+            rgb_buffer: Vec::new(),
         })
     }
 
     pub fn receive_stream(&mut self, stream: &Vec<u8>) -> Result<(), Error> {
         let mut contains_idr = false;
-
-        // TODO: fix this
         for nal_unit in openh264::nal_units(&stream) {
-            let (nal_type, data) = split_prefix_code(nal_unit)?;
-
+            let nal_type = get_prefix_code(nal_unit)?;
             match nal_type {
-                NalType::SPS => {
-                    self.sps = Some(data.to_vec());
-                    info!("received nal type {}", nal_type as u8);
-                    info!("stored sps ({} bytes)", data.len());
-                }
-                NalType::PPS => {
-                    self.pps = Some(data.to_vec());
-                    info!("received nal type {}", nal_type as u8);
-                    info!("stored pps ({} bytes)", data.len());
-                }
-                NalType::IDR => {
-                    info!("received nal type {}", nal_type as u8);
-                    contains_idr = true;
-                }
+                NalType::SPS => self.sps = Some(nal_unit.to_vec()),
+                NalType::PPS => self.pps = Some(nal_unit.to_vec()),
+                NalType::IDR => contains_idr = true,
                 _ => {}
             }
         }
@@ -76,11 +62,8 @@ impl VideoPanel {
 
     fn init_frame_buffer(&mut self) {
         self.frame_buffer.clear();
-
         if let (Some(sps), Some(pps)) = (&self.sps, &self.pps) {
-            self.frame_buffer.extend_from_slice(&NAL_PREFIX_CODE);
             self.frame_buffer.extend_from_slice(sps);
-            self.frame_buffer.extend_from_slice(&NAL_PREFIX_CODE);
             self.frame_buffer.extend_from_slice(pps);
         }
     }
