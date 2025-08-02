@@ -1,17 +1,6 @@
-use std::{io::Stdout, time::Duration};
+use crossterm::{cursor::MoveTo, style::Print, QueueableCommand};
 
-use crossterm::{ExecutableCommand, QueueableCommand, cursor::MoveTo, style::Print};
-
-use crate::{
-    input::{InputType, webcam::Webcam},
-    ui::screen::Screen,
-};
-
-mod screen;
-mod tile;
-mod video;
-
-pub const FRAME_DURATION: Duration = Duration::from_millis(30);
+use crate::{chat::Chatbox, video::VideoPanel};
 
 pub trait Drawable {
     const TOP_LEFT_CORNER: &str = "╭";
@@ -66,37 +55,25 @@ pub trait Drawable {
     }
 }
 
-pub trait Updatable {
-    fn update(&mut self, input: InputType) -> Result<(), Box<dyn std::error::Error>>;
-}
+pub fn create_layout() -> Result<(Chatbox, VideoPanel), Box<dyn std::error::Error>> {
+    let size = match termsize::get() {
+        Some(size) => size,
+        None => panic!("Unable to get terminal size."),
+    };
 
-pub trait Printable {
-    fn print(&self, out: &mut dyn std::io::Write) -> Result<(), std::io::Error>;
-}
+    let width = size.cols;
+    let height = size.rows;
 
-pub struct Ui {
-    screen: Screen,
-}
-
-impl Ui {
-    pub fn new(webcam: &Webcam) -> Result<Self, Box<dyn std::error::Error>> {
-        let size = match termsize::get() {
-            Some(size) => size,
-            None => panic!("Unable to get terminal size."),
-        };
-        let screen = Screen::new(size.cols as usize, size.rows as usize, webcam)?;
-        Ok(Self { screen: screen })
-    }
-}
-
-impl Updatable for Ui {
-    fn update(&mut self, input: InputType) -> Result<(), Box<dyn std::error::Error>> {
-        self.screen.update(input)
-    }
-}
-
-impl Printable for Ui {
-    fn print(&self, out: &mut dyn std::io::Write) -> Result<(), std::io::Error> {
-        self.screen.print(out)
+    // TODO: improve this
+    if width < height {
+        Ok((
+            Chatbox::new(1, 34, width - 2, height - 34),
+            VideoPanel::new(1, 1, width - 2, 32)?,
+        ))
+    } else {
+        Ok((
+            Chatbox::new(130, 1, width - 128 - 4, height - 2),
+            VideoPanel::new(1, 1, 128, height - 2)?,
+        ))
     }
 }

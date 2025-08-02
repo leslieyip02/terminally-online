@@ -3,7 +3,8 @@ use std::{io::stdout, sync::Arc};
 use client::{
     chat::command::Parser,
     client::{Client, signaling::init_peer_connection},
-    video::VideoPanel,
+    layout::{Drawable, create_layout},
+    logging::init_logging,
 };
 use crossterm::{
     ExecutableCommand, QueueableCommand,
@@ -13,27 +14,9 @@ use crossterm::{
 };
 use futures::{FutureExt, StreamExt};
 
+use client::chat::command::ChatboxCommand;
 use client::chat::command::ChatboxInput;
-use client::{
-    chat::{Chatbox, command::ChatboxCommand},
-    ui::{Drawable, FRAME_DURATION},
-};
 use tokio::sync::Mutex;
-use tracing_appender::rolling;
-
-fn init_logging() {
-    // Log file will rotate daily under ./logs/
-    let file_appender = rolling::daily("logs", "app.log");
-
-    let subscriber = tracing_subscriber::fmt()
-        .with_writer(file_appender)
-        .with_ansi(false) // no colors in file
-        .with_thread_names(true)
-        .with_thread_ids(true)
-        .finish();
-
-    tracing::subscriber::set_global_default(subscriber).expect("setting default subscriber failed");
-}
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -46,19 +29,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .queue(crossterm::cursor::Hide)?;
     terminal::enable_raw_mode()?;
 
-    // TODO: replace temporary code
-    let size = match termsize::get() {
-        Some(size) => size,
-        None => panic!("Unable to get terminal size."),
-    };
-    let mut chatbox = Chatbox::new(1, 1, size.cols - 2, size.rows - 2);
+    let (mut chatbox, mut video_panel) = create_layout()?;
     chatbox.draw_border(&mut stdout)?;
     chatbox.draw(&mut stdout)?;
-
-    let mut video_panel = VideoPanel::new()?;
+    video_panel.draw_border(&mut stdout)?;
+    video_panel.draw(&mut stdout)?;
 
     let mut input_stream = EventStream::new();
-    let mut interval = tokio::time::interval(FRAME_DURATION);
     let client = Arc::new(Mutex::new(Client::new()));
 
     let mut video_stream_receiver = init_peer_connection(&client).await?;
@@ -137,18 +114,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             },
 
             Some(stream) = video_stream_receiver.recv() => {
+                drop(client_guard);
+
                 match video_panel.receive_stream(&stream) {
-                    Ok(_) => {},
+                    Ok(_) => {
+                        video_panel.draw(&mut stdout)?;
+                    },
                     Err(e) => {
                         chatbox.error(&e.to_string());
                         chatbox.draw(&mut stdout)?;
                         continue;
                     },
                 }
-            },
-
-            _ = interval.tick() => {
-                drop(client_guard);
             },
         }
     }

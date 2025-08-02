@@ -1,59 +1,73 @@
-use image::{ColorType, save_buffer_with_format};
-use openh264::formats::YUVSource;
-use tracing::info;
+use std::io::Write;
 
-use crate::video::{
-    encoding::{NAL_PREFIX_CODE, NalType, split_prefix_code},
-    error::Error,
+use crossterm::{
+    QueueableCommand,
+    cursor::MoveTo,
+    style::{Color, PrintStyledContent, Stylize},
+};
+use openh264::formats::YUVSource;
+
+use crate::{
+    layout::Drawable, video::{
+        encoding::{get_prefix_code, NalType},
+        error::Error,
+        interpolater::BilinearInterpolater,
+    }
 };
 
 pub mod encoding;
 pub mod error;
 pub mod webcam;
+
+mod debug;
+mod interpolater;
+
+const UPPER_HALF_BLOCK: char = '▀';
+
 pub struct VideoPanel {
+    x: u16,
+    y: u16,
+    width: u16,
+    height: u16,
     h264_decoder: openh264::decoder::Decoder,
-    rgb_buffer: Vec<u8>,
     sps: Option<Vec<u8>>,
     pps: Option<Vec<u8>>,
     frame_buffer: Vec<u8>,
+    rgb_buffer: Vec<u8>,
+    bilinear_interpolater: BilinearInterpolater,
 }
 
 impl VideoPanel {
-    pub fn new() -> Result<Self, Error> {
+    const PADDING: u16 = 1;
+
+    pub fn new(x: u16, y: u16, width: u16, height: u16) -> Result<Self, Error> {
         let h264_decoder =
             openh264::decoder::Decoder::new().map_err(|e| Error::OpenH264 { error: e })?;
+        let bilinear_interpolater =
+            BilinearInterpolater::new(width - 2 * (Self::PADDING + 1), (height - 2) * 2);
 
         Ok(Self {
-            h264_decoder,
-            rgb_buffer: Vec::new(),
+            x: x,
+            y: y,
+            width: width,
+            height: height,
+            h264_decoder: h264_decoder,
             sps: None,
             pps: None,
             frame_buffer: Vec::new(),
+            rgb_buffer: Vec::new(),
+            bilinear_interpolater: bilinear_interpolater,
         })
     }
 
     pub fn receive_stream(&mut self, stream: &Vec<u8>) -> Result<(), Error> {
         let mut contains_idr = false;
-
-        // TODO: fix this
         for nal_unit in openh264::nal_units(&stream) {
-            let (nal_type, data) = split_prefix_code(nal_unit)?;
-
+            let nal_type = get_prefix_code(nal_unit)?;
             match nal_type {
-                NalType::SPS => {
-                    self.sps = Some(data.to_vec());
-                    info!("received nal type {}", nal_type as u8);
-                    info!("stored sps ({} bytes)", data.len());
-                }
-                NalType::PPS => {
-                    self.pps = Some(data.to_vec());
-                    info!("received nal type {}", nal_type as u8);
-                    info!("stored pps ({} bytes)", data.len());
-                }
-                NalType::IDR => {
-                    info!("received nal type {}", nal_type as u8);
-                    contains_idr = true;
-                }
+                NalType::SPS => self.sps = Some(nal_unit.to_vec()),
+                NalType::PPS => self.pps = Some(nal_unit.to_vec()),
+                NalType::IDR => contains_idr = true,
                 _ => {}
             }
         }
@@ -63,7 +77,7 @@ impl VideoPanel {
         }
         self.frame_buffer.extend_from_slice(&stream);
 
-        match self.save_frame() {
+        match self.decode_frame() {
             Ok(_) => self.frame_buffer.clear(),
             Err(e) => {
                 self.frame_buffer.clear();
@@ -76,22 +90,13 @@ impl VideoPanel {
 
     fn init_frame_buffer(&mut self) {
         self.frame_buffer.clear();
-
         if let (Some(sps), Some(pps)) = (&self.sps, &self.pps) {
-            self.frame_buffer.extend_from_slice(&NAL_PREFIX_CODE);
             self.frame_buffer.extend_from_slice(sps);
-            self.frame_buffer.extend_from_slice(&NAL_PREFIX_CODE);
             self.frame_buffer.extend_from_slice(pps);
         }
     }
 
-    fn save_frame(&mut self) -> Result<(), Error> {
-        if self.frame_buffer.is_empty() {
-            return Ok(());
-        }
-
-        info!("decoding frame of {} bytes", self.frame_buffer.len());
-
+    fn decode_frame(&mut self) -> Result<(), Error> {
         let decoded = self
             .h264_decoder
             .decode(&self.frame_buffer)
@@ -99,29 +104,64 @@ impl VideoPanel {
             .ok_or_else(|| Error::Decoding)?;
 
         let (width, height) = decoded.dimensions();
-        info!("Decoded frame: {}x{}", width, height);
-
-        // Resize buffer if needed
-        if self.rgb_buffer.len() != width * height * 3 {
+        let need_resize = self.rgb_buffer.len() != width * height * 3;
+        if need_resize {
             self.rgb_buffer.resize(width * height * 3, 0);
         }
-
         decoded.write_rgb8(&mut self.rgb_buffer);
 
-        save_buffer_with_format(
-            "tmp.png",
-            &self.rgb_buffer,
-            width as u32,
-            height as u32,
-            ColorType::Rgb8,
-            image::ImageFormat::Png,
-        )
-        .map_err(|e| {
-            info!("image save error: {:?}", e);
-            Error::Decoding
-        })?;
+        if need_resize {
+            self.bilinear_interpolater.update_weights(width, height);
+        }
+        self.bilinear_interpolater
+            .update_grayscale_buffer(&self.rgb_buffer);
 
-        info!("decoded frame saved as tmp.png");
         Ok(())
     }
+}
+
+impl Drawable for VideoPanel {
+    fn draw(&self, stdout: &mut std::io::Stdout) -> Result<(), std::io::Error> {
+        self.bilinear_interpolater
+            .grouped_rows()
+            .enumerate()
+            .try_for_each(|(y, rows)| -> Result<(), std::io::Error> {
+                let width = rows.len() / 2;
+                for x in 0..width {
+                    let tile = UPPER_HALF_BLOCK
+                        .with(Color::AnsiValue(normalize(rows[x])))
+                        .on(Color::AnsiValue(normalize(rows[width + x])));
+                    stdout
+                        .queue(MoveTo(
+                            x as u16 + self.x + Self::PADDING + 1,
+                            y as u16 + self.y + 1,
+                        ))?
+                        .queue(PrintStyledContent(tile))?;
+                }
+
+                Ok(())
+            })?;
+
+        stdout.flush()
+    }
+
+    fn x(&self) -> u16 {
+        self.x
+    }
+
+    fn y(&self) -> u16 {
+        self.y
+    }
+
+    fn width(&self) -> u16 {
+        self.width
+    }
+
+    fn height(&self) -> u16 {
+        self.height
+    }
+}
+
+fn normalize(value: u8) -> u8 {
+    232 + ((value as f32) / 256.0 * 24.0) as u8
 }

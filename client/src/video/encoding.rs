@@ -26,7 +26,7 @@ impl From<u8> for NalType {
     }
 }
 
-pub(crate) const NAL_PREFIX_CODE: [u8; 4] = [0, 0, 0, 1];
+const NAL_PREFIX_CODE: [u8; 4] = [0, 0, 0, 1];
 
 pub fn convert_payload_to_nal_units(
     payload: &[u8],
@@ -44,12 +44,6 @@ pub fn convert_payload_to_nal_units(
         NalType::FU_A => convert_fu_a_to_nal_units(&payload, nal_buffer),
         _ => Some(vec![add_prefix_to_nal_unit(&payload)]),
     }
-}
-
-fn add_prefix_to_nal_unit(slice: &[u8]) -> Vec<u8> {
-    let mut nal_unit = NAL_PREFIX_CODE.to_vec();
-    nal_unit.extend_from_slice(slice);
-    nal_unit
 }
 
 fn convert_stap_a_to_nal_units(payload: &[u8]) -> Option<Vec<Vec<u8>>> {
@@ -98,11 +92,17 @@ fn convert_fu_a_to_nal_units(payload: &[u8], nal_buffer: &mut Vec<u8>) -> Option
     }
 }
 
-pub(crate) fn split_prefix_code(nal_unit: &[u8]) -> Result<(NalType, &[u8]), Error> {
+fn add_prefix_to_nal_unit(slice: &[u8]) -> Vec<u8> {
+    let mut nal_unit = NAL_PREFIX_CODE.to_vec();
+    nal_unit.extend_from_slice(slice);
+    nal_unit
+}
+
+pub(crate) fn get_prefix_code(nal_unit: &[u8]) -> Result<NalType, Error> {
     if nal_unit.starts_with(&[0, 0, 1]) {
-        Ok((NalType::from(nal_unit[3] & 0x1F), &nal_unit[3..]))
+        Ok(NalType::from(nal_unit[3] & 0x1F))
     } else if nal_unit.starts_with(&[0, 0, 0, 1]) {
-        Ok((NalType::from(nal_unit[4] & 0x1F), &nal_unit[4..]))
+        Ok(NalType::from(nal_unit[4] & 0x1F))
     } else {
         Err(Error::MalformedNalUnit)
     }
