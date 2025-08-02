@@ -1,6 +1,5 @@
 use std::sync::Arc;
 
-use lazy_static::lazy_static;
 use tokio::sync::{
     Mutex,
     mpsc::{UnboundedReceiver, unbounded_channel},
@@ -26,13 +25,6 @@ use crate::{
     client::{Client, SignalHandler, error::Error, message::SignalMessage},
     video::encoding::convert_payload_to_nal_units,
 };
-
-lazy_static! {
-    static ref PEER_CONNECTION_MUTEX: Arc<Mutex<Option<Arc<RTCPeerConnection>>>> =
-        Arc::new(Mutex::new(None));
-    static ref PENDING_CANDIDATES: Arc<Mutex<Vec<RTCIceCandidate>>> = Arc::new(Mutex::new(vec![]));
-    static ref ADDRESS: Arc<Mutex<String>> = Arc::new(Mutex::new(String::new()));
-}
 
 async fn create_peer_connction() -> Result<RTCPeerConnection, webrtc::Error> {
     let config = RTCConfiguration {
