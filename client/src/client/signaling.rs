@@ -24,7 +24,7 @@ use webrtc::{
 
 use crate::{
     client::{Client, SignalHandler, error::Error, message::SignalMessage},
-    video::encoding::handle_rtp,
+    video::encoding::convert_payload_to_nal_units,
 };
 
 lazy_static! {
@@ -65,10 +65,7 @@ pub async fn init_peer_connection(
         Err(e) => return Err(Error::WebRTC { error: e }),
     };
 
-    // TODO: add media tracks
     let (sender, receiver) = unbounded_channel();
-
-    // Set up on_track handler
     peer_connection.on_track(Box::new(move |track, _, _| {
         let sender = sender.clone();
         Box::pin(async move {
@@ -78,7 +75,6 @@ pub async fn init_peer_connection(
                 track.codec().capability.mime_type
             );
 
-            // Create a local track to forward RTP to other peers
             let local_track = Arc::new(TrackLocalStaticRTP::new(
                 track.codec().capability.clone(),
                 String::from("video"),
@@ -90,25 +86,26 @@ pub async fn init_peer_connection(
                 let mut frame_buffer: Vec<u8> = Vec::new();
 
                 while let Ok((rtp, _)) = track.read_rtp().await {
+                    // forward RTP
                     let _ = local_track.write_rtp(&rtp).await;
 
-                    for nal_unit in handle_rtp(&rtp.payload, &mut nal_buffer) {
-                        if !nal_unit.is_empty() {
-                            let nal_type = nal_unit[0] & 0x1F;
-                            info!("received nal_type {}", nal_type);
-
-                            frame_buffer.extend_from_slice(&[0, 0, 0, 1]);
-                            frame_buffer.extend_from_slice(&nal_unit);
+                    match convert_payload_to_nal_units(&rtp.payload, &mut nal_buffer) {
+                        Some(nal_units) => nal_units
+                            .iter()
+                            .for_each(|nal_unit| frame_buffer.extend_from_slice(&nal_unit)),
+                        None => {
+                            continue;
                         }
                     }
 
                     if rtp.header.marker {
-                        if let Err(e) = sender.send(frame_buffer.clone()) {
-                            info!("failed to send frame: {e}");
-                            return;
+                        match sender.send(frame_buffer) {
+                            Ok(_) => frame_buffer = Vec::new(),
+                            Err(e) => {
+                                info!("failed to send frame: {e}");
+                                return;
+                            }
                         }
-
-                        frame_buffer.clear();
                     }
                 }
             });

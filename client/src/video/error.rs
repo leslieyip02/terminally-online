@@ -2,6 +2,7 @@
 pub enum Error {
     OpenH264 { error: openh264::Error },
     Decoding,
+    MalformedNalUnit,
 }
 
 impl std::fmt::Display for Error {
@@ -9,6 +10,7 @@ impl std::fmt::Display for Error {
         match self {
             Error::OpenH264 { error } => write!(f, "{}", error),
             Error::Decoding => write!(f, "nothing to decode"),
+            Error::MalformedNalUnit => write!(f, "malformed NAL unit"),
         }
     }
 }

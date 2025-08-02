@@ -11,15 +11,14 @@ use nokhwa::{
     pixel_format::RgbFormat,
     utils::{CameraIndex, RequestedFormat, RequestedFormatType},
 };
-use openh264::{
-    encoder::Encoder,
-    formats::{RgbSliceU8, YUVBuffer},
-};
+use openh264::formats::{RgbSliceU8, YUVBuffer};
 use tokio::{
     sync::mpsc::{UnboundedReceiver, unbounded_channel},
     time::Instant,
 };
 use tracing::info;
+
+use crate::video::encoding::split_prefix_code;
 
 pub struct Webcam {
     receiver: Option<UnboundedReceiver<Bytes>>,
@@ -62,7 +61,7 @@ impl Webcam {
             let mut rgb_buffer = vec![0; input_buffer_size];
             let mut yuv_buffer = YUVBuffer::new(input_width, input_height);
 
-            let mut h264_encoder = match Encoder::new() {
+            let mut h264_encoder = match openh264::encoder::Encoder::new() {
                 Ok(h264_encoder) => h264_encoder,
                 Err(e) => {
                     info!("unable to create h264 encoder: {e}");
@@ -110,16 +109,13 @@ impl Webcam {
 
                 openh264::nal_units(&h264_encoded_buffer)
                     .map(Bytes::copy_from_slice)
-                    .for_each(|data| {
-                        if data.starts_with(&[0, 0, 1]) {
-                            info!("sending nal type: {}", data[3] & 0x1F);
-                        } else if data.starts_with(&[0, 0, 0, 1]) {
-                            info!("sending nal type: {}", data[4] & 0x1F);
-                        } else {
-                            info!("malformed nal units");
+                    .for_each(|nal_unit| {
+                        match split_prefix_code(&nal_unit) {
+                            Ok((nal_type, _)) => info!("sending nal type: {}", nal_type as u8),
+                            Err(e) => info!("{}", e),
                         }
 
-                        match sender.send(data) {
+                        match sender.send(nal_unit) {
                             Ok(()) => {}
                             Err(e) => {
                                 info!("failed to send nal unit: {e}");

@@ -61,7 +61,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut interval = tokio::time::interval(FRAME_DURATION);
     let client = Arc::new(Mutex::new(Client::new()));
 
-    let mut frame_receiver = init_peer_connection(&client).await?;
+    let mut video_stream_receiver = init_peer_connection(&client).await?;
 
     loop {
         let mut client_guard = client.lock().await;
@@ -136,8 +136,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 chatbox.draw(&mut stdout)?;
             },
 
-            Some(frame) = frame_receiver.recv() => {
-                match video_panel.receive_frame(&frame) {
+            Some(stream) = video_stream_receiver.recv() => {
+                match video_panel.receive_stream(&stream) {
                     Ok(_) => {},
                     Err(e) => {
                         chatbox.error(&e.to_string());
