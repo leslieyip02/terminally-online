@@ -1,12 +1,9 @@
-use image::{ColorType, save_buffer_with_format};
-use openh264::formats::YUVSource;
-use tracing::info;
-
 use crate::video::{
     encoding::{NalType, get_prefix_code},
     error::Error,
 };
 
+mod debug;
 pub mod encoding;
 pub mod error;
 pub mod webcam;
@@ -66,45 +63,5 @@ impl VideoPanel {
             self.frame_buffer.extend_from_slice(sps);
             self.frame_buffer.extend_from_slice(pps);
         }
-    }
-
-    fn save_frame(&mut self) -> Result<(), Error> {
-        if self.frame_buffer.is_empty() {
-            return Ok(());
-        }
-
-        info!("decoding frame of {} bytes", self.frame_buffer.len());
-
-        let decoded = self
-            .h264_decoder
-            .decode(&self.frame_buffer)
-            .map_err(|e| Error::OpenH264 { error: e })?
-            .ok_or_else(|| Error::Decoding)?;
-
-        let (width, height) = decoded.dimensions();
-        info!("Decoded frame: {}x{}", width, height);
-
-        // Resize buffer if needed
-        if self.rgb_buffer.len() != width * height * 3 {
-            self.rgb_buffer.resize(width * height * 3, 0);
-        }
-
-        decoded.write_rgb8(&mut self.rgb_buffer);
-
-        save_buffer_with_format(
-            "tmp.png",
-            &self.rgb_buffer,
-            width as u32,
-            height as u32,
-            ColorType::Rgb8,
-            image::ImageFormat::Png,
-        )
-        .map_err(|e| {
-            info!("image save error: {:?}", e);
-            Error::Decoding
-        })?;
-
-        info!("decoded frame saved as tmp.png");
-        Ok(())
     }
 }
