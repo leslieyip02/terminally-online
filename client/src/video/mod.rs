@@ -1,6 +1,9 @@
-use crate::video::{
-    encoding::{NalType, get_prefix_code},
-    error::Error,
+use crate::{
+    ui::Drawable,
+    video::{
+        encoding::{NalType, get_prefix_code},
+        error::Error,
+    },
 };
 
 mod debug;
@@ -8,6 +11,10 @@ pub mod encoding;
 pub mod error;
 pub mod webcam;
 pub struct VideoPanel {
+    x: u16,
+    y: u16,
+    width: u16,
+    height: u16,
     h264_decoder: openh264::decoder::Decoder,
     sps: Option<Vec<u8>>,
     pps: Option<Vec<u8>>,
@@ -16,12 +23,16 @@ pub struct VideoPanel {
 }
 
 impl VideoPanel {
-    pub fn new() -> Result<Self, Error> {
+    pub fn new(x: u16, y: u16, width: u16, height: u16) -> Result<Self, Error> {
         let h264_decoder =
             openh264::decoder::Decoder::new().map_err(|e| Error::OpenH264 { error: e })?;
 
         Ok(Self {
-            h264_decoder,
+            x: x,
+            y: y,
+            width: width,
+            height: height,
+            h264_decoder: h264_decoder,
             sps: None,
             pps: None,
             frame_buffer: Vec::new(),
@@ -63,5 +74,27 @@ impl VideoPanel {
             self.frame_buffer.extend_from_slice(sps);
             self.frame_buffer.extend_from_slice(pps);
         }
+    }
+}
+
+impl Drawable for VideoPanel {
+    fn draw(&self, stdout: &mut std::io::Stdout) -> Result<(), std::io::Error> {
+        todo!()
+    }
+
+    fn x(&self) -> u16 {
+        self.x
+    }
+
+    fn y(&self) -> u16 {
+        self.y
+    }
+
+    fn width(&self) -> u16 {
+        self.width
+    }
+
+    fn height(&self) -> u16 {
+        self.height
     }
 }

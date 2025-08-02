@@ -3,7 +3,7 @@ use std::{io::stdout, sync::Arc};
 use client::{
     chat::command::Parser,
     client::{Client, signaling::init_peer_connection},
-    video::VideoPanel,
+    layout::create_layout,
 };
 use crossterm::{
     ExecutableCommand, QueueableCommand,
@@ -15,7 +15,7 @@ use futures::{FutureExt, StreamExt};
 
 use client::chat::command::ChatboxInput;
 use client::{
-    chat::{Chatbox, command::ChatboxCommand},
+    chat::command::ChatboxCommand,
     ui::{Drawable, FRAME_DURATION},
 };
 use tokio::sync::Mutex;
@@ -46,16 +46,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .queue(crossterm::cursor::Hide)?;
     terminal::enable_raw_mode()?;
 
-    // TODO: replace temporary code
-    let size = match termsize::get() {
-        Some(size) => size,
-        None => panic!("Unable to get terminal size."),
-    };
-    let mut chatbox = Chatbox::new(1, 1, size.cols - 2, size.rows - 2);
+    let (mut chatbox, mut video_panel) = create_layout()?;
     chatbox.draw_border(&mut stdout)?;
     chatbox.draw(&mut stdout)?;
-
-    let mut video_panel = VideoPanel::new()?;
+    video_panel.draw_border(&mut stdout)?;
 
     let mut input_stream = EventStream::new();
     let mut interval = tokio::time::interval(FRAME_DURATION);
