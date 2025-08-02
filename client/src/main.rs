@@ -3,7 +3,7 @@ use std::{io::stdout, sync::Arc};
 use client::{
     chat::command::Parser,
     client::{Client, signaling::init_peer_connection},
-    layout::create_layout,
+    layout::{Drawable, create_layout},
 };
 use crossterm::{
     ExecutableCommand, QueueableCommand,
@@ -13,11 +13,8 @@ use crossterm::{
 };
 use futures::{FutureExt, StreamExt};
 
+use client::chat::command::ChatboxCommand;
 use client::chat::command::ChatboxInput;
-use client::{
-    chat::command::ChatboxCommand,
-    ui::{Drawable, FRAME_DURATION},
-};
 use tokio::sync::Mutex;
 use tracing_appender::rolling;
 
@@ -53,7 +50,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     video_panel.draw(&mut stdout)?;
 
     let mut input_stream = EventStream::new();
-    let mut interval = tokio::time::interval(FRAME_DURATION);
     let client = Arc::new(Mutex::new(Client::new()));
 
     let mut video_stream_receiver = init_peer_connection(&client).await?;
@@ -132,6 +128,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             },
 
             Some(stream) = video_stream_receiver.recv() => {
+                drop(client_guard);
+
                 match video_panel.receive_stream(&stream) {
                     Ok(_) => {
                         video_panel.draw(&mut stdout)?;
@@ -142,10 +140,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         continue;
                     },
                 }
-            },
-
-            _ = interval.tick() => {
-                drop(client_guard);
             },
         }
     }

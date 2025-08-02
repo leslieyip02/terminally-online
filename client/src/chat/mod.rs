@@ -4,7 +4,7 @@ use crossterm::{QueueableCommand, cursor::MoveTo, style::Print};
 
 use crate::{
     client::message::{Message, RoomMessage, SignalMessage},
-    ui::Drawable,
+    layout::Drawable,
 };
 
 pub mod command;

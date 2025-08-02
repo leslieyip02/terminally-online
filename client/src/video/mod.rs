@@ -8,12 +8,11 @@ use crossterm::{
 use openh264::formats::YUVSource;
 
 use crate::{
-    ui::Drawable,
-    video::{
-        encoding::{NalType, get_prefix_code},
+    layout::Drawable, video::{
+        encoding::{get_prefix_code, NalType},
         error::Error,
         interpolater::BilinearInterpolater,
-    },
+    }
 };
 
 pub mod encoding;
