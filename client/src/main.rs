@@ -50,6 +50,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     chatbox.draw_border(&mut stdout)?;
     chatbox.draw(&mut stdout)?;
     video_panel.draw_border(&mut stdout)?;
+    video_panel.draw(&mut stdout)?;
 
     let mut input_stream = EventStream::new();
     let mut interval = tokio::time::interval(FRAME_DURATION);
@@ -132,7 +133,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             Some(stream) = video_stream_receiver.recv() => {
                 match video_panel.receive_stream(&stream) {
-                    Ok(_) => {},
+                    Ok(_) => {
+                        video_panel.draw(&mut stdout)?;
+                    },
                     Err(e) => {
                         chatbox.error(&e.to_string());
                         chatbox.draw(&mut stdout)?;

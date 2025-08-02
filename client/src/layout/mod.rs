@@ -18,7 +18,7 @@ pub fn create_layout() -> Result<(Chatbox, VideoPanel), Box<dyn std::error::Erro
     } else {
         Ok((
             Chatbox::new(130, 1, width - 128 - 4, height - 2),
-            VideoPanel::new(1, 1, 128, std::cmp::min(72, height - 2))?,
+            VideoPanel::new(1, 1, 128, height - 2)?,
         ))
     }
 }

@@ -25,7 +25,7 @@ pub struct Webcam {
 }
 
 impl Webcam {
-    const FRAME_DURATION: Duration = Duration::from_millis(50);
+    const FRAME_DURATION: Duration = Duration::from_millis(30);
 
     pub fn new() -> Self {
         Self { receiver: None }

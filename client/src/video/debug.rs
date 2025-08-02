@@ -5,6 +5,7 @@ use tracing::info;
 use crate::video::{VideoPanel, error::Error};
 
 impl VideoPanel {
+    #[allow(dead_code)]
     pub(crate) fn save_frame(&mut self) -> Result<(), Error> {
         if self.frame_buffer.is_empty() {
             return Ok(());
@@ -19,7 +20,6 @@ impl VideoPanel {
         let (width, height) = decoded.dimensions();
         info!("decoded frame: {} x {}", width, height);
 
-        // Resize buffer if needed
         if self.rgb_buffer.len() != width * height * 3 {
             self.rgb_buffer.resize(width * height * 3, 0);
         }
