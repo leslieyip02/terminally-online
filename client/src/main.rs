@@ -4,6 +4,7 @@ use client::{
     chat::command::Parser,
     client::{Client, signaling::init_peer_connection},
     layout::{Drawable, create_layout},
+    logging::init_logging,
 };
 use crossterm::{
     ExecutableCommand, QueueableCommand,
@@ -16,21 +17,6 @@ use futures::{FutureExt, StreamExt};
 use client::chat::command::ChatboxCommand;
 use client::chat::command::ChatboxInput;
 use tokio::sync::Mutex;
-use tracing_appender::rolling;
-
-fn init_logging() {
-    // Log file will rotate daily under ./logs/
-    let file_appender = rolling::daily("logs", "app.log");
-
-    let subscriber = tracing_subscriber::fmt()
-        .with_writer(file_appender)
-        .with_ansi(false) // no colors in file
-        .with_thread_names(true)
-        .with_thread_ids(true)
-        .finish();
-
-    tracing::subscriber::set_global_default(subscriber).expect("setting default subscriber failed");
-}
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
