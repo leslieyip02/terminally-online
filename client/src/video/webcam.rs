@@ -39,7 +39,7 @@ impl Webcam {
             info!("starting webcam");
 
             let index = CameraIndex::Index(0);
-            let format = RequestedFormat::new::<RgbFormat>(RequestedFormatType::None);
+            let format = RequestedFormat::new::<RgbFormat>(RequestedFormatType::AbsoluteHighestResolution);
             let mut camera = match Camera::new(index, format) {
                 Ok(camera) => camera,
                 Err(e) => {
