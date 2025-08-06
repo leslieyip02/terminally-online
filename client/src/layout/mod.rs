@@ -1,6 +1,9 @@
-use crossterm::{cursor::MoveTo, style::Print, QueueableCommand};
+use crossterm::{QueueableCommand, cursor::MoveTo, style::Print};
 
-use crate::{chat::Chatbox, video::VideoPanel};
+use crate::{
+    chat::Chatbox,
+    video::{LocalVideoPanel, PeerVideoPanel},
+};
 
 pub trait Drawable {
     const TOP_LEFT_CORNER: &str = "╭";
@@ -55,7 +58,8 @@ pub trait Drawable {
     }
 }
 
-pub fn create_layout() -> Result<(Chatbox, VideoPanel), Box<dyn std::error::Error>> {
+pub fn create_layout()
+-> Result<(Chatbox, LocalVideoPanel, PeerVideoPanel), Box<dyn std::error::Error>> {
     let size = match termsize::get() {
         Some(size) => size,
         None => panic!("Unable to get terminal size."),
@@ -64,16 +68,10 @@ pub fn create_layout() -> Result<(Chatbox, VideoPanel), Box<dyn std::error::Erro
     let width = size.cols;
     let height = size.rows;
 
-    // TODO: improve this
-    if width < height {
-        Ok((
-            Chatbox::new(1, 34, width - 2, height - 34),
-            VideoPanel::new(1, 1, width - 2, 32)?,
-        ))
-    } else {
-        Ok((
-            Chatbox::new(130, 1, width - 128 - 4, height - 2),
-            VideoPanel::new(1, 1, 128, height - 2)?,
-        ))
-    }
+    // TODO: improve this (this can crash)
+    Ok((
+        Chatbox::new(130, 1, width - 128 - 4, height - 2),
+        LocalVideoPanel::new_local(1, 1, 128, height / 2)?,
+        PeerVideoPanel::new_peer(1, height / 2 + 1, 128, height / 2 - 1)?,
+    ))
 }

@@ -29,23 +29,28 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .queue(crossterm::cursor::Hide)?;
     terminal::enable_raw_mode()?;
 
-    let (mut chatbox, mut video_panel) = create_layout()?;
+    let (mut chatbox, mut local_video_panel, mut peer_video_panel) = create_layout()?;
     chatbox.draw_border(&mut stdout)?;
     chatbox.draw(&mut stdout)?;
-    video_panel.draw_border(&mut stdout)?;
-    video_panel.draw(&mut stdout)?;
+    local_video_panel.draw_border(&mut stdout)?;
+    local_video_panel.draw(&mut stdout)?;
+    peer_video_panel.draw_border(&mut stdout)?;
+    peer_video_panel.draw(&mut stdout)?;
 
     let mut input_stream = EventStream::new();
-    let client = Arc::new(Mutex::new(Client::new()));
 
-    let mut video_stream_receiver = init_peer_connection(&client).await?;
+    let mut client = Client::new();
+    let mut local_video_receiver = client.start_webcam().await;
+
+    let client = Arc::new(Mutex::new(client));
+    let mut peer_video_receiver = init_peer_connection(&client).await?;
 
     loop {
         let mut client_guard = client.lock().await;
-        let poll_future = client_guard.poll_message();
+        let poll_message_future = client_guard.poll_message();
 
         tokio::select! {
-            Some(message) = poll_future => {
+            Some(message) = poll_message_future => {
                 drop(client_guard);
 
                 let message = match message {
@@ -113,12 +118,27 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 chatbox.draw(&mut stdout)?;
             },
 
-            Some(stream) = video_stream_receiver.recv() => {
+            Some(stream) = local_video_receiver.recv() => {
                 drop(client_guard);
 
-                match video_panel.receive_stream(&stream) {
+                match local_video_panel.receive_stream(&stream) {
                     Ok(_) => {
-                        video_panel.draw(&mut stdout)?;
+                        local_video_panel.draw(&mut stdout)?;
+                    },
+                    Err(e) => {
+                        chatbox.error(&e.to_string());
+                        chatbox.draw(&mut stdout)?;
+                        continue;
+                    },
+                }
+            },
+
+            Some(stream) = peer_video_receiver.recv() => {
+                drop(client_guard);
+
+                match peer_video_panel.receive_stream(&stream) {
+                    Ok(_) => {
+                        peer_video_panel.draw(&mut stdout)?;
                     },
                     Err(e) => {
                         chatbox.error(&e.to_string());

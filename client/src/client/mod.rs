@@ -1,7 +1,10 @@
 use std::{sync::Arc, time::Duration};
 
 use futures::{SinkExt, StreamExt};
-use tokio::{sync::mpsc::Receiver, time::timeout};
+use tokio::{
+    sync::mpsc::{Receiver, UnboundedReceiver},
+    time::timeout,
+};
 use tracing::info;
 use webrtc::{
     api::media_engine::MIME_TYPE_H264,
@@ -29,6 +32,7 @@ pub mod signaling;
 
 pub struct Client {
     username: String,
+    webcam: Option<Webcam>,
     http_client: reqwest::Client,
     write_stream: Option<WriteStream>,
     message_receiver: Option<Receiver<Result<Message, Error>>>,
@@ -43,6 +47,7 @@ impl Client {
 
         Self {
             username: username,
+            webcam: None,
             http_client: reqwest::Client::new(),
             write_stream: None,
             message_receiver: None,
@@ -82,8 +87,8 @@ impl Client {
                     self.join_and_connect_to_room(room_id).await?;
                     Ok(None)
                 }
-                ChatboxCommand::Stream => {
-                    self.start_stream().await?;
+                ChatboxCommand::Broadcast => {
+                    self.start_broadcast().await?;
                     self.send_offer().await?;
                     Ok(None)
                 }
@@ -106,12 +111,20 @@ impl Client {
 
     pub async fn poll_message(&mut self) -> Option<Result<Message, Error>> {
         match self.message_receiver.as_mut() {
-            Some(rx) => rx.recv().await,
+            Some(message_receiver) => message_receiver.recv().await,
             None => None,
         }
     }
 
-    pub async fn start_stream(&mut self) -> Result<(), Error> {
+    pub async fn start_webcam(&mut self) -> UnboundedReceiver<Vec<u8>> {
+        let mut webcam = Webcam::new();
+        let local_video_receiver = webcam.start_webcam();
+        self.webcam = Some(webcam);
+
+        local_video_receiver
+    }
+
+    async fn start_broadcast(&mut self) -> Result<(), Error> {
         let peer_connection = match &self.peer_connection {
             Some(peer_connection) => peer_connection,
             None => return Err(Error::PeerConnectionNotReady),
@@ -135,27 +148,27 @@ impl Client {
             while let Ok((_, _)) = rtp_sender.read(&mut rtcp_buf).await {}
         });
 
-        // TODO: add sender/receiver so that stream can be received
-        info!("starting video thread");
+        let mut webcam = match self.webcam.take() {
+            Some(webcam) => webcam,
+            None => return Err(Error::WebcamNotReady),
+        };
+        webcam.start_broadcast();
+
         tokio::spawn(async move {
-            let mut webcam = Webcam::new();
-            webcam.start();
+            info!("started video thread");
 
             loop {
                 match webcam.next().await {
                     Some(data) => {
-                        // info!("sending sample");
                         let sample = Sample {
                             data: data,
-                            duration: Duration::from_secs(1),
                             ..Default::default()
                         };
 
-                        match video_track.write_sample(&sample).await {
-                            Ok(_) => {}
-                            Err(_) => return,
+                        if let Err(e) = video_track.write_sample(&sample).await {
+                            info!("unable to write to video track: {}", e);
+                            return;
                         }
-                        // info!("sent sample");
                     }
                     None => {
                         info!("webcam stream ended");

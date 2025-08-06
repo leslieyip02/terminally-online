@@ -1,3 +1,8 @@
+use nokhwa::{
+    Camera,
+    pixel_format::RgbFormat,
+    utils::{CameraIndex, RequestedFormat, RequestedFormatType},
+};
 use openh264::formats::YUVSource;
 
 use crate::video::{
@@ -8,6 +13,42 @@ use crate::video::{
 pub trait VideoHandler {
     fn receive_stream(&mut self, stream: &Vec<u8>) -> Result<(usize, usize), Error>;
     fn rgb_buffer(&self) -> &[u8];
+}
+
+pub struct LocalVideoHandler {
+    width: usize,
+    height: usize,
+    rgb_buffer: Vec<u8>,
+}
+
+impl LocalVideoHandler {
+    pub fn new() -> Result<Self, Error> {
+        let index = CameraIndex::Index(0);
+        let format =
+            RequestedFormat::new::<RgbFormat>(RequestedFormatType::AbsoluteHighestResolution);
+        let camera = Camera::new(index, format).map_err(|e| Error::CameraNotReady { error: e })?;
+
+        let width = camera.resolution().width() as usize;
+        let height = camera.resolution().height() as usize;
+        let rgb_buffer = vec![0; width * height * 3];
+
+        Ok(Self {
+            width: width,
+            height: height,
+            rgb_buffer: rgb_buffer,
+        })
+    }
+}
+
+impl VideoHandler for LocalVideoHandler {
+    fn receive_stream(&mut self, stream: &Vec<u8>) -> Result<(usize, usize), Error> {
+        self.rgb_buffer.copy_from_slice(&stream);
+        Ok((self.width, self.height))
+    }
+
+    fn rgb_buffer(&self) -> &[u8] {
+        &self.rgb_buffer
+    }
 }
 
 pub struct PeerVideoHandler {
@@ -46,6 +87,7 @@ impl PeerVideoHandler {
             .decode(&self.frame_buffer)
             .map_err(|e| Error::OpenH264 { error: e })?
             .ok_or_else(|| Error::Decoding)?;
+        self.frame_buffer.clear();
 
         let (width, height) = decoded.dimensions();
         let need_resize = self.rgb_buffer.len() != width * height * 3;
@@ -75,10 +117,7 @@ impl VideoHandler for PeerVideoHandler {
         }
         self.frame_buffer.extend_from_slice(&stream);
 
-        let decoded_result = self.decode_frame();
-        self.frame_buffer.clear();
-
-        decoded_result
+        self.decode_frame()
     }
 
     fn rgb_buffer(&self) -> &[u8] {

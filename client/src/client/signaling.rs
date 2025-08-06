@@ -78,7 +78,6 @@ pub async fn init_peer_connection(
                 let mut frame_buffer: Vec<u8> = Vec::new();
 
                 while let Ok((rtp, _)) = track.read_rtp().await {
-                    // forward RTP
                     let _ = local_track.write_rtp(&rtp).await;
 
                     match convert_payload_to_nal_units(&rtp.payload, &mut nal_buffer) {

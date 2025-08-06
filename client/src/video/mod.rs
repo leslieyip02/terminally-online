@@ -5,13 +5,12 @@ use crossterm::{
     cursor::MoveTo,
     style::{Color, PrintStyledContent, Stylize},
 };
-use tracing::info;
 
 use crate::{
     layout::Drawable,
     video::{
         error::Error,
-        handler::{PeerVideoHandler, VideoHandler},
+        handler::{LocalVideoHandler, PeerVideoHandler, VideoHandler},
         interpolater::BilinearInterpolater,
     },
 };
@@ -25,24 +24,37 @@ mod interpolater;
 
 const UPPER_HALF_BLOCK: char = '▀';
 
-// VideoPanel -> receive stream, draw, update BilinearInterpolater?
-// VideoRenderer -> draw using BilinearInterpolater
-
-// TODO: take a dynamic VideoHandler
-pub struct VideoPanel {
+pub struct VideoPanel<T: VideoHandler> {
     x: u16,
     y: u16,
     width: u16,
     height: u16,
-    video_handler: Box<dyn VideoHandler>,
+    video_handler: T,
     bilinear_interpolater: BilinearInterpolater,
 }
 
-impl VideoPanel {
+pub type LocalVideoPanel = VideoPanel<LocalVideoHandler>;
+
+impl LocalVideoPanel {
+    pub fn new_local(x: u16, y: u16, width: u16, height: u16) -> Result<Self, Error> {
+        let video_handler = LocalVideoHandler::new()?;
+        Self::new(x, y, width, height, video_handler)
+    }
+}
+
+pub type PeerVideoPanel = VideoPanel<PeerVideoHandler>;
+
+impl PeerVideoPanel {
+    pub fn new_peer(x: u16, y: u16, width: u16, height: u16) -> Result<Self, Error> {
+        let video_handler = PeerVideoHandler::new()?;
+        Self::new(x, y, width, height, video_handler)
+    }
+}
+
+impl<T: VideoHandler> VideoPanel<T> {
     const PADDING: u16 = 1;
 
-    pub fn new(x: u16, y: u16, width: u16, height: u16) -> Result<Self, Error> {
-        let handler = PeerVideoHandler::new()?;
+    fn new(x: u16, y: u16, width: u16, height: u16, video_handler: T) -> Result<Self, Error> {
         let bilinear_interpolater =
             BilinearInterpolater::new(width - 2 * (Self::PADDING + 1), (height - 2) * 2);
 
@@ -51,24 +63,22 @@ impl VideoPanel {
             y: y,
             width: width,
             height: height,
-            video_handler: Box::new(handler),
+            video_handler: video_handler,
             bilinear_interpolater: bilinear_interpolater,
         })
     }
 
     pub fn receive_stream(&mut self, stream: &Vec<u8>) -> Result<(), Error> {
         let (width, height) = self.video_handler.receive_stream(stream)?;
-        info!("received");
         self.bilinear_interpolater
             .update_weights_if_needed(width, height);
         self.bilinear_interpolater
             .update_grayscale_buffer(&self.video_handler.rgb_buffer());
-        info!("updated");
         Ok(())
     }
 }
 
-impl Drawable for VideoPanel {
+impl<T: VideoHandler> Drawable for VideoPanel<T> {
     fn draw(&self, stdout: &mut std::io::Stdout) -> Result<(), std::io::Error> {
         self.bilinear_interpolater
             .grouped_rows()

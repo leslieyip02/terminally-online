@@ -1,7 +1,10 @@
 use std::{
     pin::Pin,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
     task::{Context, Poll},
-    time::Duration,
 };
 
 use bytes::Bytes;
@@ -12,34 +15,38 @@ use nokhwa::{
     utils::{CameraIndex, RequestedFormat, RequestedFormatType},
 };
 use openh264::formats::{RgbSliceU8, YUVBuffer};
-use tokio::{
-    sync::mpsc::{UnboundedReceiver, unbounded_channel},
-    time::Instant,
-};
+use tokio::sync::mpsc::{UnboundedReceiver, unbounded_channel};
 use tracing::info;
 
 use crate::video::encoding::get_prefix_code;
 
 pub struct Webcam {
-    receiver: Option<UnboundedReceiver<Bytes>>,
+    broadcast_toggle: Arc<AtomicBool>,
+    peer_receiver: Option<UnboundedReceiver<Bytes>>,
 }
 
 impl Webcam {
-    const FRAME_DURATION: Duration = Duration::from_millis(30);
-
     pub fn new() -> Self {
-        Self { receiver: None }
+        let broadcast_toggle = Arc::new(AtomicBool::new(false));
+
+        Self {
+            broadcast_toggle: broadcast_toggle,
+            peer_receiver: None,
+        }
     }
 
-    pub fn start(&mut self) {
-        let (sender, receiver) = unbounded_channel();
-        self.receiver = Some(receiver);
+    pub fn start_webcam(&mut self) -> UnboundedReceiver<Vec<u8>> {
+        let (local_sender, local_receiver) = unbounded_channel();
+        let (peer_sender, peer_receiver) = unbounded_channel();
+        self.peer_receiver = Some(peer_receiver);
 
+        let broadcast_toggle = self.broadcast_toggle.clone();
         std::thread::spawn(move || {
-            info!("starting webcam");
+            info!("started webcam thread");
 
             let index = CameraIndex::Index(0);
-            let format = RequestedFormat::new::<RgbFormat>(RequestedFormatType::AbsoluteHighestResolution);
+            let format =
+                RequestedFormat::new::<RgbFormat>(RequestedFormatType::AbsoluteHighestResolution);
             let mut camera = match Camera::new(index, format) {
                 Ok(camera) => camera,
                 Err(e) => {
@@ -68,14 +75,9 @@ impl Webcam {
                     return;
                 }
             };
-
             let mut h264_encoded_buffer = Vec::new();
 
-            let mut frame_count = 0;
-            let keyframe_interval = 30;
-
             loop {
-                let frame_start = Instant::now();
                 let frame = match camera.frame() {
                     Ok(frame) => frame,
                     Err(e) => {
@@ -85,17 +87,21 @@ impl Webcam {
                 };
 
                 if let Err(e) = frame.decode_image_to_buffer::<RgbFormat>(&mut rgb_buffer) {
-                    info!("failed to decode_image_to_buffer: {e}");
+                    info!("failed to decode_image_to_buffer: {}", e);
+                    continue;
+                }
+
+                if let Err(e) = local_sender.send(rgb_buffer.clone()) {
+                    info!("unable to send rgb_buffer to local video: {}", e);
+                }
+                if !broadcast_toggle.load(Ordering::Acquire) {
                     continue;
                 }
 
                 let slice = RgbSliceU8::new(&rgb_buffer, camera_dimensions);
                 yuv_buffer.read_rgb8(slice);
 
-                if frame_count % keyframe_interval == 0 {
-                    h264_encoder.force_intra_frame();
-                }
-
+                h264_encoder.force_intra_frame();
                 let bit_stream = match h264_encoder.encode(&yuv_buffer) {
                     Ok(bit_stream) => bit_stream,
                     Err(e) => {
@@ -103,7 +109,6 @@ impl Webcam {
                         continue;
                     }
                 };
-
                 h264_encoded_buffer.clear();
                 bit_stream.write_vec(&mut h264_encoded_buffer);
 
@@ -116,22 +121,18 @@ impl Webcam {
                             Err(e) => info!("{}", e),
                         }
 
-                        match sender.send(nal_unit) {
-                            Ok(()) => {}
-                            Err(e) => {
-                                info!("failed to send nal unit: {e}");
-                            }
+                        if let Err(e) = peer_sender.send(nal_unit) {
+                            info!("failed to send nal unit: {e}");
                         };
                     });
-
-                let elapsed = frame_start.elapsed();
-                if elapsed < Self::FRAME_DURATION {
-                    std::thread::sleep(Self::FRAME_DURATION - elapsed);
-                }
-
-                frame_count += 1;
             }
         });
+
+        local_receiver
+    }
+
+    pub fn start_broadcast(&mut self) {
+        self.broadcast_toggle.store(true, Ordering::Relaxed);
     }
 }
 
@@ -139,7 +140,7 @@ impl Stream for Webcam {
     type Item = Bytes;
 
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        let receiver = match &mut self.receiver {
+        let receiver = match &mut self.peer_receiver {
             Some(receiver) => receiver,
             None => return Poll::Ready(None),
         };
