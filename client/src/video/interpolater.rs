@@ -26,7 +26,8 @@ impl BilinearWeight {
 pub(crate) struct BilinearInterpolater {
     display_width: u16,
     display_height: u16,
-    input_stride: usize,
+    input_width: usize,
+    input_height: usize,
     bilinear_weights: Vec<BilinearWeight>,
     grayscale_buffer: Vec<u8>,
 }
@@ -36,17 +37,23 @@ impl BilinearInterpolater {
         Self {
             display_width: display_width,
             display_height: display_height,
-            input_stride: 0,
+            input_width: 0,
+            input_height: 0,
             bilinear_weights: Vec::new(),
             grayscale_buffer: vec![0; display_width as usize * display_height as usize],
         }
     }
 
-    pub(crate) fn update_weights(&mut self, input_width: usize, input_height: usize) {
+    pub(crate) fn update_weights_if_needed(&mut self, input_width: usize, input_height: usize) {
+        if input_width == self.input_width && input_height == self.input_height {
+            return;
+        }
+
         let x_ratio = (input_width - 1) as f32 / (self.display_width) as f32;
         let y_ratio = (input_height - 1) as f32 / (self.display_height) as f32;
 
-        self.input_stride = input_width;
+        self.input_width = input_width;
+        self.input_height = input_height;
         self.bilinear_weights = (0..self.display_height)
             .flat_map(|y| (0..self.display_width).map(move |x| (x, y)))
             .map(|(x, y)| BilinearWeight::new(x as f32, y as f32, x_ratio, y_ratio))
@@ -58,7 +65,7 @@ impl BilinearInterpolater {
             .iter()
             .enumerate()
             .for_each(|(index, weight)| {
-                self.grayscale_buffer[index] = interpolate(self.input_stride, rgb_buffer, weight)
+                self.grayscale_buffer[index] = interpolate(self.input_width, rgb_buffer, weight)
             });
     }
 

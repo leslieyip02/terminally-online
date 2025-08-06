@@ -135,6 +135,7 @@ impl Client {
             while let Ok((_, _)) = rtp_sender.read(&mut rtcp_buf).await {}
         });
 
+        // TODO: add sender/receiver so that stream can be received
         info!("starting video thread");
         tokio::spawn(async move {
             let mut webcam = Webcam::new();
