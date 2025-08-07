@@ -12,6 +12,7 @@ use crossterm::{
     event::{Event, EventStream},
     terminal::{self, Clear, ClearType},
 };
+use dotenv::dotenv;
 use futures::{FutureExt, StreamExt};
 
 use client::chat::command::ChatboxCommand;
@@ -20,6 +21,7 @@ use tokio::sync::Mutex;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    dotenv().ok();
     init_logging();
 
     let mut stdout = stdout();

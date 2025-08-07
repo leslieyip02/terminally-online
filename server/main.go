@@ -13,9 +13,10 @@ import (
 func main() {
 	err := godotenv.Load()
 	if err != nil {
-		log.Fatal("unable to load .env")
-		return
+		log.Println("could not load .env")
 	}
+
+	port := ":" + os.Getenv("PORT")
 	jwtSecret := os.Getenv("JWT_SECRET")
 
 	sessionManager := room.NewSessionManager([]byte(jwtSecret))
@@ -35,6 +36,6 @@ func main() {
 		roomManager.HandleWebSocket(w, r)
 	})
 
-	log.Println("Server started on :8080")
-	log.Fatal(http.ListenAndServe(":8080", mux))
+	log.Printf("Server started on %s", port)
+	log.Fatal(http.ListenAndServe(port, mux))
 }
