@@ -4,6 +4,7 @@ use nokhwa::{
     utils::{CameraIndex, RequestedFormat, RequestedFormatType},
 };
 use openh264::formats::YUVSource;
+use tracing::info;
 
 use crate::video::{
     encoding::{NalType, get_prefix_code},
@@ -26,10 +27,21 @@ impl LocalVideoHandler {
         let index = CameraIndex::Index(0);
         let format =
             RequestedFormat::new::<RgbFormat>(RequestedFormatType::AbsoluteHighestResolution);
-        let camera = Camera::new(index, format).map_err(|e| Error::CameraNotReady { error: e })?;
 
-        let width = camera.resolution().width() as usize;
-        let height = camera.resolution().height() as usize;
+        let (width, height) = match Camera::new(index, format) {
+            Ok(camera) => {
+                let width = camera.resolution().width() as usize;
+                let height = camera.resolution().height() as usize;
+                (width, height)
+            }
+            Err(e) => {
+                info!(
+                    "unable to create local video handler: {}",
+                    Error::CameraNotReady { error: e }
+                );
+                (0, 0)
+            }
+        };
         let rgb_buffer = vec![0; width * height * 3];
 
         Ok(Self {

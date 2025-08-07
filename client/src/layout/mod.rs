@@ -65,13 +65,16 @@ pub fn create_layout()
         None => panic!("Unable to get terminal size."),
     };
 
+    // TODO: improve this (this can crash)
+
     let width = size.cols;
     let height = size.rows;
+    let chatbox_height = height - (height % 2) - 2;
+    let video_panel_height = chatbox_height / 2;
 
-    // TODO: improve this (this can crash)
     Ok((
-        Chatbox::new(130, 1, width - 128 - 4, height - 2),
-        LocalVideoPanel::new_local(1, 1, 128, height / 2)?,
-        PeerVideoPanel::new_peer(1, height / 2 + 1, 128, height / 2 - 1)?,
+        Chatbox::new(130, 1, width - 128 - 4, chatbox_height),
+        LocalVideoPanel::new_local(1, 1, 128, video_panel_height)?,
+        PeerVideoPanel::new_peer(1, 1 + video_panel_height, 128, video_panel_height)?,
     ))
 }
