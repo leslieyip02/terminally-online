@@ -2,15 +2,23 @@
 
 ## Quick Start
 
-1. Allow webcam access from the terminal
+1. Create an `.env` file:
 
-2. Start the client
+```
+HOST=<host>
+```
+
+2. Start the client:
 
 ```
 cargo run
 ```
 
-### WSL Compatibility
+## Compatibility
+
+Tested on WSL and MacOS.
+
+### Additional Setup for WSL
 
 Attach webcam to WSL client:
 

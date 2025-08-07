@@ -1,7 +1,5 @@
+client/.env
 client/logs
 client/target
-client/*.h264
-client/*.mp4
-client/*.png
 
 server/.env

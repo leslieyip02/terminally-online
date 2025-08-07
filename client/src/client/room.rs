@@ -1,4 +1,7 @@
+use std::env;
+
 use futures::{StreamExt, stream::SplitSink};
+use lazy_static::lazy_static;
 use serde::Deserialize;
 use tokio::{
     net::TcpStream,
@@ -19,6 +22,13 @@ use crate::client::{
 pub type WriteStream = SplitSink<WebSocketStream<MaybeTlsStream<TcpStream>>, tungstenite::Message>;
 pub type MessageReceiver = Receiver<Result<Message, Error>>;
 
+lazy_static! {
+    static ref HOST: String = env::var("HOST").unwrap();
+    static ref CREATE_ROOM_URL: String = format!("http://{}/create", *HOST);
+    static ref JOIN_ROOM_URL: String = format!("http://{}/join", *HOST);
+    static ref CONNECT_TO_ROOM_URL: String = format!("ws://{}/ws", *HOST);
+}
+
 #[derive(Deserialize)]
 struct CreateRoomResponse {
     pub(crate) room: String,
@@ -28,9 +38,8 @@ struct CreateRoomResponse {
 async fn create_room(
     client: &reqwest::Client,
 ) -> Result<CreateRoomResponse, Box<dyn std::error::Error>> {
-    let url = "http://localhost:8080/create";
     let response = client
-        .post(url)
+        .post(&*CREATE_ROOM_URL)
         .send()
         .await?
         .json::<CreateRoomResponse>()
@@ -47,7 +56,7 @@ async fn join_room(
     client: &reqwest::Client,
     room_id: &str,
 ) -> Result<JoinRoomResponse, Box<dyn std::error::Error>> {
-    let url = format!("http://localhost:8080/join/{}", room_id);
+    let url = format!("{}/{}", *JOIN_ROOM_URL, room_id);
     let response = client
         .post(&url)
         .send()
@@ -62,8 +71,8 @@ async fn connect_to_room(
     username: &str,
 ) -> Result<(WriteStream, MessageReceiver), Box<dyn std::error::Error>> {
     let url = format!(
-        "ws://localhost:8080/ws?token={}&username={}",
-        token, username
+        "{}?token={}&username={}",
+        *CONNECT_TO_ROOM_URL, token, username
     )
     .into_client_request()?;
 
